@@ -1,0 +1,43 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'com.base'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Jackson for JSON and XML processing
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.17.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.1'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.1'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.17.1'
+
+    // Berkeley DB Java Edition
+    implementation 'com.sleepycat:je:18.3.12'
+
+    // JDBM and YAML (assumes these are defined in version catalog or elsewhere)
+    implementation "jdbm:jdbm:1.0"
+    implementation 'org.yaml:snakeyaml:2.0'
+
+    // Bouncy Castle
+    implementation( 'org.bouncycastle:bcprov-jdk15on:1.50')
+    implementation( 'org.bouncycastle:bcpg-jdk15on:1.50')
+
+    // JUnit 5 for testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(11)
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
