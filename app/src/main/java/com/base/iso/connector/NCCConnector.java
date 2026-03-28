@@ -9,6 +9,8 @@ import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.BaseException;
 import com.base.iso.core.ISOMsg;
 import com.base.iso.interfaces.iPackager;
+import com.base.iso.interfaces.connector.iConnector;
+import com.base.iso.interfaces.connector.filter.iBaseFilter;
 import com.base.iso.util.ISOUtil;
 import com.base.iso.util.log.LogEvent;
 import com.base.iso.util.log.Logger;
@@ -114,5 +116,56 @@ public class NCCConnector extends BaseConnector {
         super.setConfiguration (cfg);
         tpduSwap = cfg.getBoolean ("tpdu-swap", true);
     }
+
+        /**
+     * sends an byte[] over the TCP/IP session with TPDU, length and raw byte messsage
+     * 
+     * @param m the Message to be sent
+     * @exception IOException
+     * @exception BaseException
+     * @exception iBaseFilter.VetoException;
+     */
+    public void sendraw(byte[] b, byte[] TPDU) throws IOException, BaseException {
+    LogEvent evt = new LogEvent(this, "send");
+    try {
+        if (!isConnected())
+            throw new BaseException("unconnected ISOChannel");
+
+        // 1) Build payload = TPDU + b (TPDU optional)
+        final byte[] tpdu = (TPDU == null) ? new byte[0] : TPDU;
+        final byte[] body  = (b == null) ? new byte[0] : b;
+
+        final int payloadLen = tpdu.length + body.length; // 2) Count length of (TPDU + b)
+        if (payloadLen > 0xFFFF) {
+            throw new BaseException("message too long: " + payloadLen + " (> 65535)");
+        }
+
+        // 3) Convert length to 2-byte big-endian hex (just two bytes)
+        final byte[] len2 = new byte[2];
+        len2[0] = (byte) ((payloadLen >>> 8) & 0xFF);
+        len2[1] = (byte) (payloadLen & 0xFF);
+
+        // 4) Build final message = [2-byte length] + TPDU + b
+        final byte[] out = new byte[2 + payloadLen];
+        System.arraycopy(len2, 0, out, 0, 2);
+        if (tpdu.length > 0) System.arraycopy(tpdu, 0, out, 2, tpdu.length);
+        if (body.length > 0) System.arraycopy(body, 0, out, 2 + tpdu.length, body.length);
+
+        // 5) Send modified message
+        synchronized (serverOutLock) {
+            serverOut.write(out);
+            serverOut.flush();
+        }
+
+        cnt[TX]++;
+        setChanged();
+    } catch (Exception e) {
+        evt.addMessage(e);
+        throw new BaseException("unexpected exception", e);
+    } finally {
+        Logger.log(evt);
+    }
+}
+
 }
 

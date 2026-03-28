@@ -2,7 +2,7 @@ plugins {
     id 'java-library'
 }
 
-group = 'com.base'
+group = 'com.base.iso'
 version = '1.0.0'
 
 repositories {

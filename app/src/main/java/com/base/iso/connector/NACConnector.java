@@ -2,13 +2,17 @@ package com.base.iso.connector;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 
 import com.base.iso.config.Configuration;
 import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.BaseException;
 import com.base.iso.core.ISOMsg;
 import com.base.iso.interfaces.iPackager;
+import com.base.iso.interfaces.connector.iConnector;
 import com.base.iso.util.ISOUtil;
+import com.base.iso.util.log.LogEvent;
+import com.base.iso.util.log.Logger;
 
 /**
  * Talks with TCP based NACs
@@ -101,5 +105,49 @@ public class NACConnector extends BaseConnector {
         super.setConfiguration (cfg);
         tpduSwap = cfg.getBoolean ("tpdu-swap", true);
     }
+    
+    public void sendAscii(byte[] b, byte[] TPDU) throws IOException, BaseException {
+        LogEvent evt = new LogEvent(this, "send");
+        try {
+            if (!isConnected())
+                throw new BaseException("unconnected ISOChannel");
+
+            // 1) Build payload = TPDU + b (null-safe)
+            final byte[] tpdu = (TPDU == null) ? new byte[0] : TPDU;
+            final byte[] body = (b == null) ? new byte[0] : b;
+
+            final int payloadLen = tpdu.length + body.length;  // length of TPDU+b
+
+            // 2) Use 4 ASCII digits (0000..9999) for length
+            if (payloadLen > 9999) {
+                throw new BaseException("message too long for 4-digit ASCII length: " + payloadLen);
+            }
+
+            // 3) Convert length to 4 ASCII digits
+            final byte[] lenAscii = String.format("%04d", payloadLen)
+                    .getBytes(StandardCharsets.US_ASCII);
+
+            // 4) Final message = [4-byte ASCII length] + TPDU + b
+            final byte[] out = new byte[lenAscii.length + payloadLen];
+            System.arraycopy(lenAscii, 0, out, 0, lenAscii.length);
+            if (tpdu.length > 0) System.arraycopy(tpdu, 0, out, lenAscii.length, tpdu.length);
+            if (body.length > 0) System.arraycopy(body, 0, out, lenAscii.length + tpdu.length, body.length);
+
+            // 5) Send
+            synchronized (serverOutLock) {
+                serverOut.write(out);
+                serverOut.flush();
+            }
+
+            cnt[TX]++;
+            setChanged();
+        } catch (Exception e) {
+            evt.addMessage(e);
+            throw new BaseException("unexpected exception", e);
+        } finally {
+            Logger.log(evt);
+        }
+    }
+    
 }
 
