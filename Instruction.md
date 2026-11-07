@@ -99,6 +99,86 @@ Schema:
 
   On failure the previous layout stays active. (1.x printed a stack trace and carried on.)
 - A new `GenericJSONPackager()` starts with the ISO87B layout.
+- `class` may also be qualified: `com.base.iso.fields.IFB_LLNUM`, or jPOS `org.jpos.iso.IFB_LLNUM`. Both map to the library's codec of the same name.
+
+### XML layout (`GenericJSONPackager.setFieldsFromXml`)
+
+The same packager also accepts the jPOS GenericPackager XML format, so you can paste existing jPOS layouts:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE isopackager SYSTEM "genericpackager.dtd">
+<isopackager>
+  <isofield id="0" length="4"  name="MTI"     class="org.jpos.iso.IFB_NUMERIC" pad="true"/>
+  <isofield id="1" length="16" name="BIT MAP" class="org.jpos.iso.IFB_BITMAP"/>
+  <isofield id="2" length="19" name="PAN"     class="org.jpos.iso.IFB_LLNUM"   pad="false"/>
+</isopackager>
+```
+
+```java
+packager.setFieldsFromXml(xmlString);  // same fail-loud rules as setFieldsFromJson
+```
+
+- The attributes follow the same rules as the JSON keys.
+- The DOCTYPE line is optional and is ignored. The DTD is never fetched.
+- These throw `IllegalArgumentException`, and the previous layout stays active:
+  - a DOCTYPE with an internal `[...]` subset;
+  - a root element other than `<isopackager>`;
+  - an unknown child element;
+  - a sub-layout using features that aren't supported (see below).
+
+### Sub-fields (F48 / F63-style private data)
+
+Some hosts pack several sub-fields inside one field. Describe them with a sub-layout: `<isofieldpackager>` in XML, as in jPOS, or an entry with a `"subfields"` array in JSON. The sub-layout's own `class` and `length` describe the **outer** field, for example `IFB_LLLCHAR` or `IFB_LLLBINARY`. Its children describe the sub-fields inside it.
+
+```xml
+<isofieldpackager id="48" length="999" name="PRIVATE" class="org.jpos.iso.IFB_LLLCHAR"
+                  packager="org.jpos.iso.packager.GenericSubFieldPackager" emitBitmap="false">
+  <isofield id="1" length="2"  name="TABLE" class="org.jpos.iso.IF_CHAR"/>
+  <isofield id="2" length="20" name="DATA"  class="org.jpos.iso.IFB_LLCHAR"/>
+</isofieldpackager>
+
+<isofieldpackager id="63" length="999" name="PRIVATE" class="org.jpos.iso.IFB_LLLBINARY"
+                  packager="org.jpos.iso.packager.GenericSubFieldPackager" emitBitmap="true" bitmapField="0">
+  <isofield id="0" length="8" name="SUB BITMAP" class="org.jpos.iso.IFB_BITMAP"/>
+  <isofield id="1" length="2" name="TABLE"      class="org.jpos.iso.IF_CHAR"/>
+  <isofield id="2" length="4" name="KEY"        class="org.jpos.iso.IFB_BINARY"/>
+</isofieldpackager>
+```
+
+```json
+{"id": 48, "length": 999, "name": "PRIVATE", "class": "IFB_LLLCHAR", "emitBitmap": false,
+ "subfields": [ {"id": 1, "length": 2, "class": "IF_CHAR"}, {"id": 2, "length": 20, "class": "IFB_LLCHAR"} ]}
+```
+
+```java
+msg.setPackager(packager);          // first, as always
+msg.set("48.1", "AB");
+msg.set("63.2", "0A0B0C0D");        // binary sub-field: hex, validated like a top-level field
+String table = response.getString("48.1");
+```
+
+There are two modes:
+
+- **Bitmapped** (`emitBitmap="true"`). A bitmap codec sits at `bitmapField` (default `1`, as in jPOS), and bit *i* means sub-field *i* is present. Only the present sub-fields are sent.
+  - If sub-field 1 carries data (`bitmapField="0"`), keep an `IFB_BITMAP` at 8 or 4 bytes. A longer bitmap would read bit 1 as "secondary bitmap follows", so that layout is rejected.
+  - When unpacking, a set bit with no matching sub-field codec is an error, because its length can't be known.
+- **Positional** (`emitBitmap="false"`). Sub-fields are sent back to back in id order.
+  - When packing, a missing sub-field *before* the last one you set is sent as an empty value, so the later sub-fields stay in position. This matches jPOS.
+  - When unpacking, decoding stops when the field's data ends, so optional trailing sub-fields can be left out. Extra unknown bytes at the end are ignored rather than failing the whole response.
+
+More rules:
+
+- If `emitBitmap` is omitted, it is inferred: the sub-layout is bitmapped if the codec at `bitmapField` is a bitmap codec.
+- `firstField` and `maxValidField` work as in jPOS.
+- Sub-layouts can be nested, e.g. `msg.getString("48.2.1")`.
+- `set("63.2", …)` gives the sub-message the sub-layout's packager automatically.
+- In code, a sub-layout is `new MsgFieldBase(outerCodec, new GenericSubFieldPackager(fieldNo, subFields, bitmapped, bitmapField, -1))`.
+
+Not supported, rejected with an error that names the entry path (e.g. `isofield[3].isofield[1]: …`):
+
+- tagged/TLV sub-packagers (`tagMapper`, `tagSize`, `lenSize`, or any `packager` other than `GenericSubFieldPackager`);
+- `headerLength` inside a sub-layout.
 
 ## 4. Pack and unpack
 
@@ -112,6 +192,56 @@ String rc = resp.getString(39);
 ```
 
 If unpacking fails, the `BaseException` message names the field and the reason. Example: `field packager '3' is null (-) unpacking field=3, consumed=10`.
+
+### Messages as JSON or XML (`ISOMsgConverter`)
+
+Use these to exchange messages with APIs, store test fixtures, or inspect a message. They give a text view of the fields; the wire format still comes from the packager.
+
+```java
+String json = ISOMsgConverter.toJson(msg);          // or toJsonPretty(msg)
+ISOMsg m1   = ISOMsgConverter.fromJson(json, packager);
+String xml  = ISOMsgConverter.toXml(msg);
+ISOMsg m2   = ISOMsgConverter.fromXml(xml, packager);
+```
+
+```json
+{"header": "6000010002",
+ "fields": {"0": "0200", "2": "4111111111111111",
+            "52": {"binary": "0123456789ABCDEF"},
+            "48": {"fields": {"1": "ABC"}}}}
+```
+
+```xml
+<isomsg>
+  <header>6000010002</header>
+  <field id="0" value="0200"/>
+  <field id="52" value="0123456789ABCDEF" type="binary"/>
+  <isomsg id="48"><field id="1" value="ABC"/></isomsg>
+</isomsg>
+```
+
+- Field 0 is the MTI. The bitmap is not written; it is recomputed when you pack. Binary values and the header are hex.
+- Invalid input throws `BaseException`, and the message names the field.
+- **The output is cleartext card data.** Before logging, mask it: `ISOMsgConverter.toJson(new ProtectLogListener().mask(msg))`.
+
+### Built-in JSON and XML utilities
+
+The library has its own JSON and XML readers and writers. They have no third-party dependency and don't use `javax.xml`, they are safe on Android API 24, and they are thread-safe. Your app can use them too:
+
+```java
+Object v   = Json.parse(text);        // Map (key order kept) / List / String / Long / BigDecimal / Boolean / null
+String out = Json.write(v);           // or Json.writePretty(v)
+
+XmlElement root = Xml.parse(text);    // getName(), getAttribute(..), getChildren(..), getChild(..), getText()
+String xml      = Xml.write(root);    // build trees with new XmlElement("a").setAttribute(..).addChild(..)
+```
+
+- Both packages are in `com.base.iso.util`: `json.Json`, `xml.Xml` and `xml.XmlElement`.
+- Malformed input throws `IllegalArgumentException`, and the message gives the character offset.
+- XML limits:
+  - Namespaces are not interpreted.
+  - The parser never loads external resources, and it refuses DOCTYPE internal subsets, so entity-expansion attacks can't run.
+  - Text that is only whitespace between elements is dropped.
 
 ## 5. Send over TCP (connectors)
 

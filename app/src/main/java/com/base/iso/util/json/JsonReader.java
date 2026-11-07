@@ -1,42 +1,39 @@
-package com.base.iso.packager;
+package com.base.iso.util.json;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal JSON reader for the GenericJSONPackager layout schema (plan T20).
- *
- * Replaces Jackson so the jar has zero third-party runtime dependencies. JDK-only and safe on
- * Android API 24. Recursive descent over the subset the layout needs:
- * objects, arrays, strings (all JSON escapes incl. \\uXXXX), integers, true/false/null.
- * Floats, comments and trailing commas are rejected.
+ * Recursive-descent JSON reader (RFC 8259), JDK-only and safe on Android API 24.
+ * Use through {@link Json#parse(String)}.
  *
  * Output types: {@code Map<String,Object>} (insertion-ordered), {@code List<Object>},
- * {@code String}, {@code Long}, {@code Boolean}, or {@code null}.
- * Errors are {@link IllegalArgumentException} with the character offset.
- *
- * Stateless entry point; each call uses its own instance, so it is thread-safe.
+ * {@code String}, {@code Long} (integers that fit), {@code BigDecimal} (fractions, exponents,
+ * integers beyond long), {@code Boolean}, or {@code null}.
+ * Errors are {@link IllegalArgumentException} carrying the character offset.
+ * One instance per call → thread-safe through the static entry point.
  */
-final class LayoutJsonReader {
+final class JsonReader {
 
-    /** Guards against stack overflow on hostile input; the layout schema needs depth 3. */
-    private static final int MAX_DEPTH = 64;
+    /** Guards against stack overflow on hostile input. */
+    static final int MAX_DEPTH = 64;
 
     private final String s;
     private int pos;
     private int depth;
 
-    private LayoutJsonReader(String s) {
+    private JsonReader(String s) {
         this.s = s;
     }
 
-    /** Parses a complete JSON document; anything but whitespace after the value is an error. */
+    /** Parses a complete document; anything but whitespace after the value is an error. */
     static Object parse(String json) {
         if (json == null)
-            throw new IllegalArgumentException("JSON layout is null");
-        LayoutJsonReader r = new LayoutJsonReader(json);
+            throw new IllegalArgumentException("Invalid JSON: input is null");
+        JsonReader r = new JsonReader(json);
         r.skipWs();
         Object v = r.readValue();
         r.skipWs();
@@ -58,7 +55,7 @@ final class LayoutJsonReader {
             case 'n': return literal("null", null);
             default:
                 if (c == '-' || (c >= '0' && c <= '9'))
-                    return readInteger();
+                    return readNumber();
                 throw error("unexpected character '" + c + "'");
         }
     }
@@ -156,7 +153,7 @@ final class LayoutJsonReader {
                         cp = (cp << 4) | d;
                     }
                     pos += 4;
-                    sb.append((char) cp);
+                    sb.append((char) cp); // surrogate pairs arrive as two escapes
                     break;
                 default:
                     throw error("invalid escape '\\" + e + "'", pos - 2);
@@ -164,23 +161,47 @@ final class LayoutJsonReader {
         }
     }
 
-    /** Integers only (the schema has no fractional values); range-checked to long. */
-    private Long readInteger() {
+    /** -?(0|[1-9]d*)(.d+)?([eE][+-]?d+)? → Long when integral and in range, else BigDecimal. */
+    private Number readNumber() {
         int start = pos;
         if (peek() == '-')
             pos++;
-        int digits = pos;
+        if (pos < s.length() && s.charAt(pos) == '0') {
+            pos++;
+        } else if (digits() == 0) {
+            throw error("invalid number", start);
+        }
+        boolean integral = true;
+        if (pos < s.length() && s.charAt(pos) == '.') {
+            pos++;
+            if (digits() == 0)
+                throw error("invalid number", start);
+            integral = false;
+        }
+        if (pos < s.length() && (s.charAt(pos) == 'e' || s.charAt(pos) == 'E')) {
+            pos++;
+            if (pos < s.length() && (s.charAt(pos) == '+' || s.charAt(pos) == '-'))
+                pos++;
+            if (digits() == 0)
+                throw error("invalid number", start);
+            integral = false;
+        }
+        String text = s.substring(start, pos);
+        if (integral) {
+            try {
+                return Long.valueOf(text);
+            } catch (NumberFormatException tooBig) {
+                // falls through to BigDecimal
+            }
+        }
+        return new BigDecimal(text);
+    }
+
+    private int digits() {
+        int start = pos;
         while (pos < s.length() && s.charAt(pos) >= '0' && s.charAt(pos) <= '9')
             pos++;
-        if (pos == digits)
-            throw error("invalid number", start);
-        if (pos < s.length() && (s.charAt(pos) == '.' || s.charAt(pos) == 'e' || s.charAt(pos) == 'E'))
-            throw error("fractional/exponent numbers are not supported", start);
-        try {
-            return Long.valueOf(s.substring(start, pos));
-        } catch (NumberFormatException ex) {
-            throw error("number out of range", start);
-        }
+        return pos - start;
     }
 
     private Object literal(String word, Object value) {
@@ -226,6 +247,6 @@ final class LayoutJsonReader {
     }
 
     private IllegalArgumentException error(String msg, int at) {
-        return new IllegalArgumentException("Invalid JSON layout: " + msg + " at offset " + at);
+        return new IllegalArgumentException("Invalid JSON: " + msg + " at offset " + at);
     }
 }

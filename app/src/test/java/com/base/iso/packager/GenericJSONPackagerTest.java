@@ -83,10 +83,52 @@ class GenericJSONPackagerTest {
         assertThrows(IllegalArgumentException.class, () -> g.setFieldsFromJson(json));
     }
 
+    // --- XML layouts (jPOS GenericPackager format, built-in parser) ---
+
+    @Test
+    void xmlLayoutMatchesIso87b() throws Exception {
+        GenericJSONPackager g = new GenericJSONPackager();
+        g.setFieldsFromXml(TestMessages.iso87bLayoutXml());
+        assertLayoutMatchesIso87b(g);
+    }
+
+    @Test
+    void invalidXmlLayoutThrowsAndKeepsPreviousLayout() throws Exception {
+        GenericJSONPackager g = new GenericJSONPackager();
+        g.setFieldsFromXml(TestMessages.iso87bLayoutXml());
+        List<aISOFieldBase> before = g.getDynamicFields();
+
+        for (String bad : new String[] {
+                "<isopackager><isofield id=\"0\" length=\"4\" class=\"IFB_NUMERIC\">",           // malformed
+                "<packager><isofield id=\"0\" length=\"4\" class=\"IFB_NUMERIC\"/></packager>",  // wrong root
+                "<isopackager/>",                                                              // empty
+                "<isopackager><isofield id=\"0\" class=\"IFB_NUMERIC\"/></isopackager>",         // no length
+                "<isopackager><isofield id=\"x\" length=\"4\" class=\"IFB_NUMERIC\"/></isopackager>",
+                "<isopackager><isofield id=\"0\" length=\"4\" class=\"IF_NOPE\"/></isopackager>",
+                "<isopackager><isofieldpackager id=\"48\"/></isopackager>",
+                "<isopackager><foo/></isopackager>",
+                "<!DOCTYPE isopackager [<!ENTITY x \"y\">]><isopackager/>" })
+            assertThrows(IllegalArgumentException.class, () -> g.setFieldsFromXml(bad), bad);
+
+        assertEquals(before, g.getDynamicFields());
+    }
+
+    @Test
+    void qualifiedClassNamesAcceptedInJsonToo() throws Exception {
+        String json = TestMessages.iso87bLayoutJson(false)
+                .replace("\"class\": \"", "\"class\": \"com.base.iso.fields.");
+        GenericJSONPackager g = new GenericJSONPackager();
+        g.setFieldsFromJson(json);
+        assertLayoutMatchesIso87b(g);
+    }
+
     private static void assertMatchesIso87b(String json) throws Exception {
         GenericJSONPackager g = new GenericJSONPackager();
         g.setFieldsFromJson(json);
+        assertLayoutMatchesIso87b(g);
+    }
 
+    private static void assertLayoutMatchesIso87b(GenericJSONPackager g) throws Exception {
         // Golden layout: per slot class, length, description, pad.
         ISO87BPackager ref = new ISO87BPackager();
         List<aISOFieldBase> got = g.getDynamicFields();

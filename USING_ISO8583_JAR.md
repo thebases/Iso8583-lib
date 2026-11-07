@@ -24,7 +24,7 @@ Optional internal Maven publishing: `./gradlew :app:publishToMavenLocal` (coordi
 `./gradlew :app:check` enforces each of these and fails the build on a violation:
 
 - **No third-party runtime dependencies** (`verifySelfContained`). The jar runs with JDK or Android framework classes only. If a dependency ever becomes unavoidable, it must be shaded and relocated under `com.base.iso.shaded.*`. See plan T21 in `.agents/planning/`.
-- **Only Android-available JDK modules** (`jdepsCheck`): `java.base` and `java.sql`, which pulls in `java.xml`.
+- **Only Android-available JDK modules** (`jdepsCheck`): `java.base` and `java.sql`. JSON and XML are handled by the library's own code (`com.base.iso.util.json`, `com.base.iso.util.xml`), not by `javax.xml` or a third-party library.
 - **Only Android API 24 APIs** (`animalsnifferMain`). This rejects `java.nio.file`, `java.time`, `java.net.http`, and Java 9+ method overloads such as `ByteBuffer.position(int)`.
 - **Bytecode for Java 11** (class file major 55), for JVM 11+ and Android D8.
 - **R8 keep rules inside the jar** at `META-INF/proguard/iso8583.pro`.
@@ -65,7 +65,7 @@ Release smoke checks, run with **only** the jar on the classpath:
 | `new SimpleConfiguration(String filename)`, `SimpleConfiguration.load(String)` | Load `Properties` yourself, then `new SimpleConfiguration(props)` |
 | `GenericSSLSocketFactory` / `SunJSSESocketFactory`: `setKeyStore(String path)`, `setPassword`, `setKeyPassword`, `getKeyStore()`, and the config keys `keystore`, `storepassword`, `keypassword` | `setKeyStore(KeyStore, char[])`, `setTrustStore(KeyStore)` or `setSSLContext(SSLContext)` |
 | Bundled resource `com/base/packager/iso87binary.json` | `ISO87BPackager`, or your own JSON string |
-| Jackson on the classpath | Nothing: the JSON layout is parsed internally |
+| Jackson on the classpath | Nothing: JSON and XML are handled internally (`Json`, `Xml`) |
 
 ### Behaviour changes
 

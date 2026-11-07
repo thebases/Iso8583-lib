@@ -5,6 +5,7 @@ import java.lang.ref.WeakReference;
 import java.util.*;
 
 import com.base.iso.fields.base.BinaryFieldBase;
+import com.base.iso.fields.base.MsgFieldBase;
 import com.base.iso.interfaces.iSource;
 import com.base.iso.interfaces.iPackager;
 import com.base.iso.interfaces.connector.iConnector;
@@ -230,6 +231,32 @@ public class ISOMsg extends BaseComponent
             unset(fldno);
     }
 
+    /**
+     * Returns the sub-message at {@code fldno} of {@code parent}, creating it when absent (or when
+     * the slot holds a non-composite value, as before). If the parent's packager defines that field
+     * as a sub-layout ({@link MsgFieldBase}), the sub-message gets the sub-field packager, so
+     * {@code set("63.2", hex)} parses a binary sub-field as hex exactly like a top-level field.
+     */
+    private static ISOMsg subMsg (ISOMsg parent, int fldno) throws BaseException {
+        iPackager sub = null;
+        if (parent.packager instanceof aBasePackager) {
+            Object codec = ((aBasePackager) parent.packager).getFieldPackager(fldno);
+            if (codec instanceof MsgFieldBase)
+                sub = ((MsgFieldBase) codec).getISOMsgPackager();
+        }
+        Object obj = parent.getValue(fldno);
+        ISOMsg m;
+        if (obj instanceof ISOMsg) {
+            m = (ISOMsg) obj;
+        } else {
+            m = new ISOMsg (fldno);
+            parent.set (m);
+        }
+        if (m.getPackager() == null && sub != null)
+            m.setPackager(sub);
+        return m;
+    }
+
    /**
     * Creates an ISOField associated with fldno within this ISOMsg
     * @param fpath dot-separated field path (i.e. 63.2)
@@ -244,7 +271,7 @@ public class ISOMsg extends BaseComponent
             if (st.hasMoreTokens()) {
                 Object obj = m.getValue(fldno);
                 if (obj instanceof ISOMsg)
-                    m = (ISOMsg) obj;
+                    m = subMsg (m, fldno);
                 else
                     /* 
                      * we need to go deeper, however, if the value == null then
@@ -254,7 +281,7 @@ public class ISOMsg extends BaseComponent
                         break;
                     } else {
                         // We have a value to set, so adding a level to hold it is sensible.
-                        m.set (m = new ISOMsg (fldno));
+                        m = subMsg (m, fldno);
                     }
             } else {
                 m.set (fldno, value);
@@ -277,7 +304,7 @@ public class ISOMsg extends BaseComponent
              if (st.hasMoreTokens()) {
                  Object obj = m.getValue(fldno);
                  if (obj instanceof ISOMsg)
-                     m = (ISOMsg) obj;
+                     m = subMsg (m, fldno);
                  else
                      /* 
                       * we need to go deeper, however, if the value == null then
@@ -287,7 +314,7 @@ public class ISOMsg extends BaseComponent
                          break;
                      } else {
                          // We have a value to set, so adding a level to hold it is sensible.
-                         m.set (m = new ISOMsg (fldno));
+                         m = subMsg (m, fldno);
                      }
              } else {
                  m.set (c);
@@ -311,9 +338,9 @@ public class ISOMsg extends BaseComponent
             if (st.hasMoreTokens()) {
                 Object obj = m.getValue(fldno);
                 if (obj instanceof ISOMsg)
-                    m = (ISOMsg) obj;
+                    m = subMsg (m, fldno);
                 else
-                    m.set (m = new ISOMsg (fldno));
+                    m = subMsg (m, fldno);
             } else {
                 m.set (fldno, value);
                 break;

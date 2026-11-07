@@ -83,7 +83,7 @@ def verifySelfContained = tasks.register('verifySelfContained') {
 // jdeps: the jar may only need JDK modules that Android also provides.
 def jdepsCheck = tasks.register('jdepsCheck') {
     group = 'verification'
-    description = 'Runs jdeps on the jar; only java.base / java.sql / java.xml are allowed.'
+    description = 'Runs jdeps on the jar; only java.base / java.sql are allowed (both on Android).'
     def jarFile = tasks.named('jar').flatMap { it.archiveFile }
     def jdk = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(11) }
     inputs.file(jarFile)
@@ -99,7 +99,7 @@ def jdepsCheck = tasks.register('jdepsCheck') {
             commandLine exe.absolutePath, '--multi-release', '11', '--print-module-deps', jarFile.get().asFile.absolutePath
         }
         def modules = result.standardOutput.asText.get().trim().split(',').collect { it.trim() }.findAll { it }
-        def allowed = ['java.base', 'java.sql', 'java.xml']
+        def allowed = ['java.base', 'java.sql']
         def extra = modules - allowed
         if (!extra.isEmpty()) {
             throw new GradleException("jar needs modules outside ${allowed}: ${extra}")

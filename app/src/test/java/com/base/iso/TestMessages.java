@@ -124,4 +124,23 @@ public final class TestMessages {
         }
         return sb.append("  ]\n}\n").toString();
     }
+
+    /**
+     * The same ISO87B layout in the jPOS GenericPackager XML format, with a jPOS DOCTYPE line and
+     * jPOS-qualified class names (org.jpos.iso.X) to prove ported layouts load unchanged.
+     */
+    public static String iso87bLayoutXml() {
+        ISO87BPackager ref = new ISO87BPackager();
+        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<!DOCTYPE isopackager SYSTEM \"genericpackager.dtd\">\n<isopackager>\n");
+        for (int i = 0; i <= 128; i++) {
+            aISOFieldBase f = ref.getFieldPackager(i);
+            sb.append("  <isofield id=\"").append(i)
+              .append("\" length=\"").append(f.getLength())
+              .append("\" name=\"").append(com.base.iso.util.xml.Xml.escapeAttribute(f.getDescription()))
+              .append("\" class=\"org.jpos.iso.").append(f.getClass().getSimpleName())
+              .append("\" pad=\"").append(iso87bPad(f)).append("\"/>\n");
+        }
+        return sb.append("</isopackager>\n").toString();
+    }
 }

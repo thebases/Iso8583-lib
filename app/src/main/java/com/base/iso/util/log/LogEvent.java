@@ -9,16 +9,9 @@ import java.io.PrintStream;
 import java.sql.SQLException;
 import java.util.*;
 
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-
-import org.w3c.dom.Element;
-
 import com.base.iso.interfaces.log.iLogSource;
 import com.base.iso.interfaces.log.iLoggeable;
+import com.base.iso.util.xml.XmlElement;
 
 public class LogEvent {
     private iLogSource source;
@@ -137,20 +130,10 @@ public class LogEvent {
                             p.print(array[i]);
                         }
                         p.println("]");
-                    } else if (o instanceof Element) {
-                        try {
-                            TransformerFactory tf = TransformerFactory.newInstance();
-                            Transformer transformer = tf.newTransformer();
-                            transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-                            transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
-
-                            DOMSource source = new DOMSource((Element) o);
-                            StreamResult result = new StreamResult(p);
-                            transformer.transform(source, result);
-                        } catch (Exception e) {
-                            p.println(newIndent + "<error>Failed to transform XML Element</error>");
-                            e.printStackTrace(p);
-                        }
+                    } else if (o instanceof XmlElement) {
+                        // built-in XML (replaces the javax.xml / org.w3c.dom pretty-printer)
+                        for (String line : o.toString().split("\n"))
+                            p.println(newIndent + line);
                     } else if (o != null) {
                         p.println(newIndent + escapeXml(o.toString()));
                     } else {
