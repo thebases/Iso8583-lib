@@ -7,7 +7,7 @@ import com.base.iso.models.padder.NullPadder;
 import com.base.iso.models.prefixer.AsciiPrefixer;
 
 /**
- * ISOFieldPackager ASCII variable len CHAR 
+ * aISOFieldBase ASCII variable len CHAR 
  * @see BaseComponent
  */
 public class IFA_LLLLLCHAR extends StringFieldBase {

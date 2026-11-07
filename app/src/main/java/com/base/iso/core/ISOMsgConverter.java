@@ -21,7 +21,7 @@ import com.base.iso.util.xml.XmlElement;
  *             "52": {"binary": "0123456789ABCDEF"},
  *             "48": {"fields": {"1": "ABC"}}}}
  * </pre>
- * <b>XML</b> (jPOS XMLPackager style)
+ * <b>XML</b>
  * <pre>
  * &lt;isomsg&gt;
  *   &lt;header&gt;6000010002&lt;/header&gt;
@@ -132,7 +132,7 @@ public final class ISOMsgConverter {
     }
 
     /**
-     * Rebuilds a message from {@link #toXml} output (jPOS XMLPackager style).
+     * Rebuilds a message from {@link #toXml} output.
      * @param packager set on the result when not null (needed before {@code pack()})
      * @throws BaseException on malformed XML or an unsupported shape (message names the field)
      */

@@ -11,7 +11,7 @@ import com.base.iso.util.log.LogEvent;
  */
 public interface iRawIncomingFilter extends iBaseFilter {
     /**
-     * @param channel current ISOChannel instance
+     * @param channel current connector instance
      * @param m ISOMsg to filter
      * @param header optional header 
      * @param image raw image

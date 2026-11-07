@@ -111,8 +111,8 @@ public class ISOMsg extends BaseComponent
      * Note: The trailer data requires a customised channel that explicitily handles the trailer data from the ISOMsg.
      *
      * @param trailer The trailer data.
-     * @see BaseChannel#getMessageTrailer(ISOMsg).
-     * @see BaseChannel#sendMessageTrailer(ISOMsg, byte[]).
+     * @see BaseConnector#getMessageTrailer(ISOMsg).
+     * @see BaseConnector#sendMessageTrailer(ISOMsg, byte[]).
      */
     public void setTrailer(byte[] trailer) {
         this.trailer = trailer;
@@ -348,7 +348,7 @@ public class ISOMsg extends BaseComponent
         }
     }
    /**
-    * Creates an ISOBinaryField associated with fldno within this ISOMsg
+    * Creates an BinaryFieldComponent associated with fldno within this ISOMsg
     * @param fldno field number
     * @param value field value
     * @throws BaseException on error
@@ -399,7 +399,7 @@ public class ISOMsg extends BaseComponent
                     m = (ISOMsg) obj;
                 }
                 else {
-                    // No real way of unset further subfield, exit.  Perhaps should be ISOException?
+                    // No real way of unset further subfield, exit.  Perhaps should be BaseException?
                     break;
                 }
             } else {
@@ -634,7 +634,7 @@ public class ISOMsg extends BaseComponent
     /**
      * Return the byte[] value associated with the given ISOField number
      * @param fldno the Field Number
-     * @return field's byte[] value or null if ISOException or UnsupportedEncodingException happens
+     * @return field's byte[] value or null if BaseException or UnsupportedEncodingException happens
      */
     public byte[] getBytes (int fldno) {
         byte[] b = null;
@@ -705,7 +705,7 @@ public class ISOMsg extends BaseComponent
                      m = (ISOMsg) obj;
                  }
                  else {
-                     // No real way of checking for further subfields, return false, perhaps should be ISOException?
+                     // No real way of checking for further subfields, return false, perhaps should be BaseException?
                      return false;
                  }
              } else {
@@ -721,7 +721,7 @@ public class ISOMsg extends BaseComponent
     }
     /**
      * Don't call setValue on an ISOMsg. You'll sure get
-     * an ISOException. It's intended to be used on Leafs
+     * an BaseException. It's intended to be used on Leafs
      * @param obj
      * @throws com.base.iso.BaseException
      * @see ISOField
@@ -1066,15 +1066,15 @@ public class ISOMsg extends BaseComponent
         }
     }
     /**
-     * Let this ISOMsg object hold a weak reference to an ISOSource
-     * (usually used to carry a reference to the incoming ISOChannel)
-     * @param source an ISOSource
+     * Let this ISOMsg object hold a weak reference to an iSource
+     * (usually used to carry a reference to the incoming connector)
+     * @param source an iSource
      */
     public void setSource (iSource source) {
         this.sourceRef = new WeakReference (source);
     }
     /**
-     * @return an ISOSource or null
+     * @return an iSource or null
      */
     public iSource getSource () {
         return (sourceRef != null) ? (iSource) sourceRef.get () : null;

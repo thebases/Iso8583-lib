@@ -298,7 +298,7 @@ public class ISOUtil {
     }
 
     /**
-     * zeropads a long without throwing an ISOException (performs modulus operation)
+     * zeropads a long without throwing an BaseException (performs modulus operation)
      *
      * @param l the long
      * @param len the length
@@ -769,7 +769,7 @@ public class ISOUtil {
         if (s.length() % 2 == 0) {
             return hex2byte (s.getBytes(), 0, s.length() >> 1);
         } else {
-        	// Padding left zero to make it even size #Bug raised by tommy
+        	// Odd length: left-pad with zero to make it even
         	return hex2byte("0"+s);
         }
     }

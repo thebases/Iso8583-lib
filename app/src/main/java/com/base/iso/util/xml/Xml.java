@@ -17,7 +17,7 @@ import java.util.Map;
  * {@code a:b} is kept as-is).
  *
  * Security: no external resources are ever loaded. A DOCTYPE that only names an external DTD
- * (e.g. jPOS {@code <!DOCTYPE isopackager SYSTEM "genericpackager.dtd">}) is skipped; a DOCTYPE
+ * (e.g. {@code <!DOCTYPE isopackager SYSTEM "layout.dtd">}) is skipped; a DOCTYPE
  * with an internal subset ({@code [...]}) is rejected, so entity-expansion attacks cannot run.
  */
 public final class Xml {

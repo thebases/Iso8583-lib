@@ -7,7 +7,7 @@ import com.base.iso.models.padder.RightPadder;
 import com.base.iso.models.prefixer.AsciiPrefixer;
 
 /**
- * ISOFieldPackager ASCII variable len padded (fixed) NUMERIC
+ * aISOFieldBase ASCII variable len padded (fixed) NUMERIC
  * (suitable to use in ANSI X9.2 interchanges.
  * 
  * @see BaseComponent

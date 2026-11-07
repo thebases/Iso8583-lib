@@ -3,7 +3,7 @@ package com.base.iso.util.log;
 import com.base.iso.interfaces.log.iLogSource;
 
 /**
- * Represents a LogSource and adds several helpers 
+ * Represents a iLogSource and adds several helpers 
  * @see iLogSource
  */
 public class Log implements iLogSource {

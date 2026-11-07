@@ -50,7 +50,7 @@ public class AmountComponent
             String s = (String) obj;
             if (s.length() < 12) {
                 throw new BaseException (
-                    "ISOAmount invalid length " + s.length()
+                    "AmountComponent invalid length " + s.length()
                 );
             }
             try {

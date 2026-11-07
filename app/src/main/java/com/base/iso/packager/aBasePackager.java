@@ -22,8 +22,6 @@ import com.base.iso.util.log.Logger;
 
 /**
  * provides base functionality for the actual packagers
- *
- * @author apr
  */
 @SuppressWarnings ("unused")
 public abstract class aBasePackager implements iPackager, iLogSource {
@@ -444,7 +442,7 @@ public abstract class aBasePackager implements iPackager, iLogSource {
         return 128;
     }
     /**
-     * @return suitable ISOFieldPackager for Bitmap
+     * @return suitable aISOFieldBase for Bitmap
      */
     protected aISOFieldBase getBitMapfieldPackager() {
         return fld[1];

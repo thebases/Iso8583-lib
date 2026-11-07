@@ -7,7 +7,7 @@ import com.base.iso.models.padder.NullPadder;
 import com.base.iso.models.prefixer.AsciiPrefixer;
 
 /**
- * ISOFieldPackager ASCII variable len NUMERIC 
+ * aISOFieldBase ASCII variable len NUMERIC 
  * @see BaseComponent
  */
 public class IFA_LLLNUM extends StringFieldBase {

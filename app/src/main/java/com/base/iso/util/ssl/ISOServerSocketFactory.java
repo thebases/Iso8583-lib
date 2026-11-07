@@ -7,7 +7,7 @@ import java.net.ServerSocket;
 import com.base.iso.core.BaseException;
 
 /**
- * <code>ISOServerSocketFactory</code> is used by BaseChannel and ISOServer
+ * <code>ISOServerSocketFactory</code> is used by connectors and servers
  * in order to provide hooks for SSL implementations. 
  */
 public interface ISOServerSocketFactory {

@@ -7,7 +7,7 @@ import com.base.iso.models.padder.LeftPadder;
 import com.base.iso.models.prefixer.NullPrefixer;
 
 /**
- * ISOFieldPackager Binary Numeric 
+ * aISOFieldBase Binary Numeric 
  * @see BaseComponent
  */
 public class IFB_NUMERIC extends StringFieldBase {
@@ -24,7 +24,7 @@ public class IFB_NUMERIC extends StringFieldBase {
                 NullPrefixer.INSTANCE);
     }
 
-    /** Must override ISOFieldPackager method to set the Interpreter correctly */
+    /** Must override aISOFieldBase method to set the Interpreter correctly */
     public void setPad(boolean pad)
     {
         setInterpreter(pad ? BCDInterpreter.LEFT_PADDED : BCDInterpreter.RIGHT_PADDED);

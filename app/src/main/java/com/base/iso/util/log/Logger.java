@@ -19,7 +19,7 @@ import com.base.iso.interfaces.log.iLoggeable;
  * @see iLogListener
  * @see iLoggeable
  * @see SimpleLogListener
- * @see RotateLogListener
+ * @see ProtectLogListener
  */
 @SuppressWarnings("unchecked")
 public class Logger implements iLogProducer {
@@ -61,7 +61,6 @@ public class Logger implements iLogProducer {
         iLogSource source = evt.getSource();
         if (!versionShown) {
             evt.addMessage ("");
-            // evt.addMessage (Q2.getVersionString());
             versionShown = !versionShown;
         }
         if (source != null)
@@ -75,9 +74,8 @@ public class Logger implements iLogProducer {
         }
     }
     /**
-     * associates this Logger with a name using NameRegistrar
+     * Registers this Logger under {@code name} (see {@link #getLogger(String)}).
      * @param name name to register
-     * @see NameRegistrar
      */
     public void setName (String name) {
         this.name = name;
@@ -92,7 +90,6 @@ public class Logger implements iLogProducer {
     }
     /**
      * @return logger instance with given name. Creates one if necessary
-     * @see NameRegistrar
      */
     public synchronized static Logger getLogger (String name) {
    

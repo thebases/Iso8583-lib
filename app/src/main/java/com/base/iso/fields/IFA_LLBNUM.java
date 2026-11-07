@@ -14,7 +14,7 @@ import com.base.iso.models.prefixer.AsciiPrefixer;
 /**
  * Length is represented in ASCII (as in IFA_LL*)
  * Value is represented in BCD
- * ISOFieldPackager Binary LLNUM
+ * aISOFieldBase Binary LLNUM
  *
  * @see BaseComponent
  */

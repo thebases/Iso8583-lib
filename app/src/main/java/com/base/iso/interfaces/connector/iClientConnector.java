@@ -2,7 +2,7 @@ package com.base.iso.interfaces.connector;
 /**
  * Tag this channel as a client one (from a Socket point of view)
  *
- * Please note that ISOChannel implementations may choose to
+ * Please note that Connector implementations may choose to
  * implement ClientChannel as well as ServerChannel, being a
  * client does not mean it can not be a server too. 
  * @see iConnector
@@ -10,7 +10,7 @@ package com.base.iso.interfaces.connector;
  */
 public interface iClientConnector extends iConnector {
     /**
-     * initialize an ISOChannel
+     * initialize an connector
      * @param host  server TCP Address
      * @param port  server port number
      */

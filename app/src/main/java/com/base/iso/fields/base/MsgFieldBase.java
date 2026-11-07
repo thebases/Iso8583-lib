@@ -14,8 +14,8 @@ import com.base.iso.interfaces.iSubFieldBase;
 
 /**
  * MsgFieldBase is a packager able to pack compound ISOMsgs
- * (one message inside another one, and so on...) 
- * @see com.base.iso.packager.PostPackager
+ * (one message inside another one, and so on...)
+ * @see com.base.iso.packager.GenericSubFieldPackager
  */
 public class MsgFieldBase extends aISOFieldBase {
     protected iPackager msgPackager;

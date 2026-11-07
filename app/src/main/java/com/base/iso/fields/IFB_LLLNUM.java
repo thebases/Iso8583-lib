@@ -7,7 +7,7 @@ import com.base.iso.models.padder.NullPadder;
 import com.base.iso.models.prefixer.BcdPrefixer;
 
 /**
- * ISOFieldPackager Binary LLLNUM 
+ * aISOFieldBase Binary LLLNUM 
  * @see BaseComponent
  */
 
@@ -32,7 +32,7 @@ public class IFB_LLLNUM extends StringFieldBase {
         super.setLength(len);
     }
 
-    /** Must override ISOFieldPackager method to set the Interpreter correctly */
+    /** Must override aISOFieldBase method to set the Interpreter correctly */
     public void setPad(boolean pad)
     {
         setInterpreter(pad ? BCDInterpreter.LEFT_PADDED : BCDInterpreter.RIGHT_PADDED);

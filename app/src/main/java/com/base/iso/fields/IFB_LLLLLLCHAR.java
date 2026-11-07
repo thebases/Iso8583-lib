@@ -7,7 +7,7 @@ import com.base.iso.models.padder.NullPadder;
 import com.base.iso.models.prefixer.BcdPrefixer;
 
 /**
- * ISOFieldPackager Binary LLLCHAR 
+ * aISOFieldBase Binary LLLCHAR 
  * @see BaseComponent
  */
 public class IFB_LLLLLLCHAR extends StringFieldBase {

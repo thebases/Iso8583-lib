@@ -10,7 +10,7 @@ import com.base.iso.fields.base.BitMapFieldBase;
 import com.base.iso.util.ISOUtil;
 
 /**
- * ISOFieldPackager Binary Bitmap 
+ * aISOFieldBase Binary Bitmap 
  * @see BaseComponent
  * @see BitMapFieldBase
  */

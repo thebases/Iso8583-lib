@@ -1,7 +1,6 @@
 package com.base.iso.models.interpreter;
 /**
  * This interpreter does no conversion and leaves the input the same as the output.
- * @author jonathan.oconnor@xcom.de
  */
 public class LiteralBinaryInterpreter implements BinaryInterpreter
 {

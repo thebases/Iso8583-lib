@@ -35,30 +35,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Observable;
 
-/*
- * BaseChannel was ISOChannel. Now ISOChannel is an interface 
- */
-
 /**
- * ISOChannel is an abstract class that provides functionality that
- * allows the transmision and reception of ISO 8583 Messages
- * over a TCP/IP session.
+ * Base connector: transmits and receives ISO 8583 messages over a TCP/IP session
+ * (socket lifecycle, framing hooks, filters, timeouts, logging). Subclasses define the
+ * length prefix and header handling (NCC, BCD, NAC, HEX).
  * <p>
- * This class is not thread-safe.
+ * One connector per socket; send and receive are each serialized internally. Callers match
+ * responses to requests themselves (F11 / F37).
  * <p>
- * ISOChannel is Observable in order to suport GUI components
- * such as ISOChannelPanel.
- * <br>
- * It now support the new Logger architecture so we will
- * probably setup ISOChannelPanel to be a LogListener insteado
- * of being an Observer in future releases.
- * 
- * @see ISOMsg
- * @see MUX
- * @see BaseException
- * @see com.base.iso.connector.CSChannel
- * @see Logger
+ * Observable so UI or monitoring code can follow connect / send / receive events.
  *
+ * @see ISOMsg
+ * @see BaseException
+ * @see Logger
  */
 @SuppressWarnings("unchecked")
 public abstract class BaseConnector extends Observable
@@ -102,7 +91,7 @@ public abstract class BaseConnector extends Observable
 
     /**
      * constructor shared by server and client
-     * ISOChannels (which have different signatures)
+     * connectors (which have different signatures)
      */
     public BaseConnector() {
         super();
@@ -114,11 +103,11 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * constructs a client ISOChannel
+     * constructs a client connector
      * 
      * @param host server TCP Address
      * @param port server port number
-     * @param p    an ISOPackager
+     * @param p    an iPackager
      * @see iPackager
      */
     public BaseConnector(String host, int port, iPackager p) {
@@ -128,9 +117,9 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * constructs a server ISOChannel
+     * constructs a server connector
      * 
-     * @param p an ISOPackager
+     * @param p an iPackager
      * @exception IOException on error
      * @see iPackager
      */
@@ -140,9 +129,9 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * constructs a server ISOChannel associated with a Server Socket
+     * constructs a server connector associated with a Server Socket
      * 
-     * @param p            an ISOPackager
+     * @param p            an iPackager
      * @param serverSocket where to accept a connection
      * @exception IOException on error
      * @see iPackager
@@ -155,7 +144,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * initialize an ISOChannel
+     * initialize an connector
      * 
      * @param host server TCP Address
      * @param port server port number
@@ -168,7 +157,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * initialize an ISOChannel
+     * initialize an connector
      * 
      * @param iface server TCP Address
      * @param port  server port number
@@ -179,7 +168,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * @param host to connect (client ISOChannel)
+     * @param host to connect (client connector)
      */
     public void setHost(String host) {
         this.host = host;
@@ -187,7 +176,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * @param port to connect (client ISOChannel)
+     * @param port to connect (client connector)
      */
     public void setPort(int port) {
         this.port = port;
@@ -211,7 +200,7 @@ public abstract class BaseConnector extends Observable
     /**
      * set Packager for channel
      * 
-     * @param p an ISOPackager
+     * @param p an iPackager
      * @see iPackager
      */
     public void setPackager(iPackager p) {
@@ -226,7 +215,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * Associates this ISOChannel with a server socket
+     * Associates this connector with a server socket
      * 
      * @param sock where to accept a connection
      */
@@ -291,7 +280,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * factory method pattern (as suggested by Vincent.Greene@amo.com)
+     * factory method for the client socket
      * 
      * @param host remote host
      * @param port remote port
@@ -358,8 +347,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * sets socket timeout (as suggested by
-     * Leonard Thomas <leonard@rhinosystemsinc.com>)
+     * sets socket timeout
      * 
      * @param timeout in milliseconds
      * @throws SocketException on error
@@ -405,7 +393,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * Connects client ISOChannel to server
+     * Connects client connector to server
      * 
      * @exception IOException
      */
@@ -448,14 +436,13 @@ public abstract class BaseConnector extends Observable
         this.name = ss.getInetAddress().getHostAddress() + ":" + ss.getPort();
         connect(ss);
 
-        // Warning - closing here breaks ISOServer, we need an
-        // accept that keep ServerSocket open.
+        // Warning - do not close the ServerSocket here: a server keeps accepting
+        // further connections on it (one cloned connector per connection).
         // s.close();
     }
 
     /**
-     * @param b - new Usable state (used by ISOMUX internals to
-     *          flag as unusable in order to force a reconnection)
+     * @param b - new usable state (set false to force a reconnection)
      */
     public void setUsable(boolean b) {
         Logger.log(new LogEvent(this, "usable", b));
@@ -467,7 +454,7 @@ public abstract class BaseConnector extends Observable
      * on outgoing messages
      * 
      * @param m outgoing ISOMsg
-     * @return ISOPackager
+     * @return iPackager
      */
     protected iPackager getDynamicPackager(ISOMsg m) {
         return packager;
@@ -478,7 +465,7 @@ public abstract class BaseConnector extends Observable
      * on outgoing messages
      * 
      * @param image incoming message image
-     * @return ISOPackager
+     * @return iPackager
      */
     protected iPackager getDynamicPackager(byte[] image) {
         return packager;
@@ -490,7 +477,7 @@ public abstract class BaseConnector extends Observable
      * 
      * @param header message header
      * @param image  incoming message image
-     * @return ISOPackager
+     * @return iPackager
      */
     protected iPackager getDynamicPackager(byte[] header, byte[] image) {
         return getDynamicPackager(image);
@@ -605,7 +592,7 @@ public abstract class BaseConnector extends Observable
         LogEvent evt = new LogEvent(this, "send");
         try {
             if (!isConnected())
-                throw new BaseException("unconnected ISOChannel");
+                throw new BaseException("unconnected connector");
             m.setDirection(ISOMsg.OUTGOING);
             iPackager p = getDynamicPackager(m);
             m.setPackager(p);
@@ -657,7 +644,7 @@ public abstract class BaseConnector extends Observable
         LogEvent evt = new LogEvent(this, "send");
         try {
             if (!isConnected())
-                throw new BaseException("unconnected ISOChannel");
+                throw new BaseException("unconnected connector");
             synchronized (serverOutLock) {
                 serverOut.write(b);
                 serverOut.flush();
@@ -686,12 +673,12 @@ public abstract class BaseConnector extends Observable
     }
 
     protected boolean isRejected(byte[] b) {
-        // VAP Header support - see VAPChannel
+        // hook for header-based rejection/ignoring (override in a subclass)
         return false;
     }
 
     protected boolean shouldIgnore(byte[] b) {
-        // VAP Header support - see VAPChannel
+        // hook for header-based rejection/ignoring (override in a subclass)
         return false;
     }
 
@@ -737,7 +724,7 @@ public abstract class BaseConnector extends Observable
         m.setSource(this);
         try {
             if (!isConnected())
-                throw new BaseException("unconnected ISOChannel");
+                throw new BaseException("unconnected connector");
 
             synchronized (serverInLock) {
                 int len = getMessageLength();
@@ -758,7 +745,7 @@ public abstract class BaseConnector extends Observable
                 } else if (len > 0 && len <= getMaxPacketLength()) {
                     if (hLen > 0) {
                         // ignore message header (TPDU)
-                        // Note header length is not necessarily equal to hLen (see VAPChannel)
+                        // Note header length is not necessarily equal to hLen (a subclass may use a variable header)
                         header = readHeader(hLen);
                         len -= header.length;
                     }
@@ -835,7 +822,7 @@ public abstract class BaseConnector extends Observable
 
     /**
      * disconnects the TCP/IP session. The instance is ready for
-     * a reconnection. There is no need to create a new ISOChannel<br>
+     * a reconnection. There is no need to create a new connector<br>
      * 
      * @exception IOException
      */
@@ -905,10 +892,9 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * associates this ISOChannel with a name using NameRegistrar
-     * 
+     * Registers this connector under {@code name} (see {@link #getChannel(String)}).
+     *
      * @param name name to register
-     * @see NameRegistrar
      */
     public void setName(String name) {
         // drop the previous registration so renamed connectors don't stay reachable/leak (T18)
@@ -924,7 +910,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * @return this ISOChannel's name ("" if no name was set)
+     * @return this connector's name ("" if no name was set)
      */
     public String getName() {
         return this.name;
@@ -1131,22 +1117,19 @@ public abstract class BaseConnector extends Observable
 
     /**
      * @param name the Channel's name (without the "channel." prefix)
-     * @return ISOChannel instance with given name.
-     * @throws NameRegistrar.NotFoundException;
-     * @see NameRegistrar
+     * @return connector registered with the given name, or null
      */
     public static iConnector getChannel(String name)
-    // throws NameRegistrar.NotFoundException
     {
         return channelMap.get("channel." + name);
     }
 
     /**
-     * Gets the ISOClientSocketFactory (may be null)
+     * Gets the iClientSocketFactory (may be null)
      * 
      * @see iClientSocketFactory
      * @since 1.3.3 \
-     * @return ISOClientSocketFactory
+     * @return iClientSocketFactory
      */
     public iClientSocketFactory getSocketFactory() {
         return socketFactory;
@@ -1155,7 +1138,7 @@ public abstract class BaseConnector extends Observable
     /**
      * Sets the specified Socket Factory to create sockets
      * 
-     * @param socketFactory the ISOClientSocketFactory
+     * @param socketFactory the iClientSocketFactory
      * @see iClientSocketFactory
      * @since 1.3.3
      */
@@ -1207,10 +1190,8 @@ public abstract class BaseConnector extends Observable
             // The lock objects must also be cloned, and the DataStreams nullified, as it
             // makes no sense
             // to use the new lock objects to protect the old DataStreams.
-            // This should be safe as the only code that calls BaseChannel.clone() is
-            // ISOServer.run(),
-            // and it immediately calls accept(ServerSocket) which does a connect(), and
-            // that sets the stream objects.
+            // This is safe because a server-side caller clones the connector and immediately
+            // calls accept(ServerSocket), which does a connect() that sets the stream objects.
             channel.serverInLock = new Object();
             channel.serverOutLock = new Object();
             channel.serverIn = null;

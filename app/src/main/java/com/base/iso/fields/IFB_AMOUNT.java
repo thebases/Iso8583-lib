@@ -7,7 +7,7 @@ import com.base.iso.models.interpreter.BCDInterpreter;
 import com.base.iso.util.ISOUtil;
 
 /**
- * ISOFieldPackager Binary Amount 
+ * aISOFieldBase Binary Amount 
  * @see BaseComponent
  */
 public class IFB_AMOUNT extends aISOFieldBase {

@@ -45,21 +45,21 @@ public class BitMapComponent extends BaseComponent implements Cloneable {
     }
 
     /**
-     * not available on Leaf - always throw ISOException
+     * not available on Leaf - always throw BaseException
      * @exception BaseException
      */
     public byte[] pack() throws BaseException {
         throw new BaseException ("Not available on Leaf");
     }
     /**
-     * not available on Leaf - always throw ISOException
+     * not available on Leaf - always throw BaseException
      * @exception BaseException
      */
     public int unpack(byte[] b) throws BaseException {
         throw new BaseException ("Not available on Leaf");
     }
     /**
-     * not available on Leaf - always throw ISOException
+     * not available on Leaf - always throw BaseException
      * @exception BaseException
      */
     public void unpack(InputStream in) throws BaseException {

@@ -18,18 +18,18 @@ public interface iConnector extends iSource {
 
     /**
      * Associate a packager with this channel
-     * @param p     an ISOPackager
+     * @param p     an iPackager
      */
     public void setPackager(iPackager p);
 
     /**
-     * Connects ISOChannel 
+     * Connects the connector 
      * @exception IOException
      */
     public void connect () throws IOException;
 
     /**
-     * disconnects ISOChannel
+     * disconnects the connector
      * @exception IOException
      */
     public void disconnect () throws IOException;
@@ -75,13 +75,13 @@ public interface iConnector extends iSource {
     public void setUsable(boolean b);
 
     /**
-     * associates this ISOChannel with a name on NameRegistrar
+     * associates this connector with a name (see BaseConnector.getChannel)
      * @param name name to register
      */
     public void setName (String name);
 
    /**
-    * @return this ISOChannel's name ("" if no name was set)
+    * @return this connector's name ("" if no name was set)
     */
     public String getName();
 

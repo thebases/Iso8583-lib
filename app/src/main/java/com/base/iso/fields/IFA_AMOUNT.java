@@ -7,7 +7,7 @@ import com.base.iso.models.padder.LeftPadder;
 import com.base.iso.models.prefixer.NullPrefixer;
 
 /**
- * ISOFieldPackager ASCII AMOUNT.
+ * aISOFieldBase ASCII AMOUNT.
  * This packager pads the amount to the left with zeros, prepends the sign amount, and
  * interprets the chars with an ASCII interpreter. It has no length prefix.
  * 

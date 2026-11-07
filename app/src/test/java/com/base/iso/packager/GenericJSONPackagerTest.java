@@ -83,7 +83,7 @@ class GenericJSONPackagerTest {
         assertThrows(IllegalArgumentException.class, () -> g.setFieldsFromJson(json));
     }
 
-    // --- XML layouts (jPOS GenericPackager format, built-in parser) ---
+    // --- XML layouts (built-in parser) ---
 
     @Test
     void xmlLayoutMatchesIso87b() throws Exception {
@@ -120,6 +120,16 @@ class GenericJSONPackagerTest {
         GenericJSONPackager g = new GenericJSONPackager();
         g.setFieldsFromJson(json);
         assertLayoutMatchesIso87b(g);
+    }
+
+    @Test
+    void foreignPackageClassNamesAreRejected() {
+        // Only short names and com.base.iso.fields.X are accepted; other packages are not aliased.
+        String json = TestMessages.iso87bLayoutJson(false)
+                .replaceFirst("\"class\": \"IF_CHAR\"", "\"class\": \"org.example.iso.IF_CHAR\"");
+        GenericJSONPackager g = new GenericJSONPackager();
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> g.setFieldsFromJson(json));
+        assertTrue(e.getMessage().contains("org.example.iso.IF_CHAR"), e.getMessage());
     }
 
     private static void assertMatchesIso87b(String json) throws Exception {

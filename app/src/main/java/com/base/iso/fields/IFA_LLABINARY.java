@@ -11,7 +11,7 @@ import com.base.iso.fields.base.aISOFieldBase;
 import com.base.iso.util.ISOUtil;
 
 /**
- * ISOFieldPackager ASCII variable len BINARY
+ * aISOFieldBase ASCII variable len BINARY
  * 
  * @see BaseComponent
  */

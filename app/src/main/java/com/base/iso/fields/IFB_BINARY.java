@@ -6,7 +6,7 @@ import com.base.iso.models.interpreter.LiteralBinaryInterpreter;
 import com.base.iso.models.prefixer.NullPrefixer;
 
 /**
- * ISOFieldPackager Binary Field 
+ * aISOFieldBase Binary Field 
  * @see BaseComponent
  */
 

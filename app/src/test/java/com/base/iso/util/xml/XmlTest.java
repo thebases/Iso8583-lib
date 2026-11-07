@@ -41,7 +41,7 @@ class XmlTest {
     @Test
     void skipsExternalDoctypeWithoutFetching() {
         XmlElement r = Xml.parse("<?xml version=\"1.0\"?>\n"
-                + "<!DOCTYPE isopackager SYSTEM \"http://example.invalid/genericpackager.dtd\">\n"
+                + "<!DOCTYPE isopackager SYSTEM \"http://example.invalid/layout.dtd\">\n"
                 + "<isopackager/>");
         assertEquals("isopackager", r.getName());
     }

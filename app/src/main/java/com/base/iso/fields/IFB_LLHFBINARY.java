@@ -11,7 +11,7 @@ import com.base.iso.fields.base.aISOFieldBase;
 
 
 /**
- * ISOFieldPackager Binary Hex Fixed LLBINARY 
+ * aISOFieldBase Binary Hex Fixed LLBINARY 
  * @see BaseComponent
  */
 public class IFB_LLHFBINARY extends aISOFieldBase {

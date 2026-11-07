@@ -7,7 +7,7 @@ import com.base.iso.models.padder.NullPadder;
 import com.base.iso.models.prefixer.BinaryPrefixer;
 
 /**
- * ISOFieldPackager Binary LLL Hex NUM
+ * aISOFieldBase Binary LLL Hex NUM
  * Almost the same as IFB_LLLNUM but len is encoded as a binary
  * value. A len of 16 is encoded as 0x10 instead of 0x16
 

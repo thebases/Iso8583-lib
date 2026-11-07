@@ -15,8 +15,7 @@ import com.base.iso.fields.base.aISOFieldBase;
 import com.base.iso.interfaces.iSubFieldBase;
 
 /**
- * Packs the sub-fields INSIDE one ISO field (e.g. F48 / F63 private data) — the equivalent of
- * jPOS {@code GenericSubFieldPackager}. Wrapped by {@link com.base.iso.fields.base.MsgFieldBase},
+ * Packs the sub-fields INSIDE one ISO field (e.g. F48 / F63 private data). Wrapped by {@link com.base.iso.fields.base.MsgFieldBase},
  * which adds the outer field's own encoding / length prefix:
  * <pre>
  *   aISOFieldBase f63 = new MsgFieldBase(new IFB_LLLBINARY(999, "F63"),
@@ -33,7 +32,7 @@ import com.base.iso.interfaces.iSubFieldBase;
  *       set in a longer bitmap is read as "secondary bitmap follows".</li>
  *   <li><b>Positional</b> — no bitmap; sub-fields are packed back to back in id order.
  *       On pack, a missing sub-field BEFORE the highest present one is packed as an empty value
- *       (so later positions stay aligned — same as jPOS). On unpack, decoding stops cleanly when
+ *       (so later positions stay aligned). On unpack, decoding stops cleanly when
  *       the data ends, so optional trailing sub-fields may be omitted.</li>
  * </ul>
  * Stateless during pack/unpack → shareable across threads once built.
@@ -208,7 +207,7 @@ public class GenericSubFieldPackager extends aBasePackager implements iSubFieldB
             if (next >= 0)
                 throw new BaseException("field " + fieldNumber + "." + next + ": bit set but no codec in sub-field layout");
         }
-        // Bytes left after the last known positional sub-field are ignored (as jPOS does): failing
+        // Bytes left after the last known positional sub-field are ignored on purpose: failing
         // here would reject an otherwise valid host response because of one unknown trailing
         // sub-field in private data. Callers needing strictness can compare against b.length.
         return consumed;

@@ -17,14 +17,14 @@ public class BaseException extends Exception implements iLoggeable {
     Throwable nested = null;
 
     /**
-     * Constructs an <code>ISOException</code> with no detail message. 
+     * Constructs an <code>BaseException</code> with no detail message. 
      */
     public BaseException() {
         super();
     }
 
     /**
-     * Constructs an <code>ISOException</code> with the specified detail 
+     * Constructs an <code>BaseException</code> with the specified detail 
      * message. 
      *
      * @param   s   the detail message.
@@ -34,7 +34,7 @@ public class BaseException extends Exception implements iLoggeable {
     }
 
     /**
-     * Constructs an <code>ISOException</code> with a nested
+     * Constructs an <code>BaseException</code> with a nested
      * exception
      * @param nested another exception
      */
@@ -44,7 +44,7 @@ public class BaseException extends Exception implements iLoggeable {
     }
 
     /**
-     * Constructs an <code>ISOException</code> with a detail Message nested
+     * Constructs an <code>BaseException</code> with a detail Message nested
      * exception
      * @param   s   the detail message.
      * @param nested another exception

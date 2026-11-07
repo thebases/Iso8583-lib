@@ -4,9 +4,9 @@ import com.base.iso.core.BaseComponent;
 import com.base.iso.core.BitMapComponent;
 
 /**
- * IF*_BITMAP classes extends this class instead of ISOFieldPackager
- * so packagers can check if field-1 ISOFieldPackager is an instance
- * of an ISOBitMapPackager and handle differences between ANSI X9.2
+ * IF*_BITMAP classes extends this class instead of aISOFieldBase
+ * so packagers can check if field-1 aISOFieldBase is an instance
+ * of an BitMapFieldBase and handle differences between ANSI X9.2
  * and ISO-8583 packaging schemes. 
  *
  * @see aISOFieldBase

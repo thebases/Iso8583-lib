@@ -20,15 +20,15 @@ import com.base.iso.util.xml.XmlElement;
  *
  * Layout JSON: {@code {"isofields":[{"id":2,"length":19,"name":"PAN","class":"IFB_LLNUM","pad":false}, ...]}}
  * <br>
- * Layout XML (jPOS GenericPackager style):
+ * Layout XML:
  * {@code <isopackager><isofield id="2" length="19" name="PAN" class="IFB_LLNUM" pad="false"/>...</isopackager>}
  * <br>
  * Sub-fields (F48/F63-style private data): {@code <isofieldpackager>} in XML, an entry with a
  * {@code "subfields"} array in JSON — built as {@code MsgFieldBase} + {@link GenericSubFieldPackager}.
  * <ul>
  *   <li>{@code class} = simple name of a codec in {@code com.base.iso.fields} (instantiated by
- *       reflection — R8 keep rules ship in META-INF/proguard/iso8583.pro). Qualified names
- *       {@code com.base.iso.fields.X} and jPOS {@code org.jpos.iso.X} map to the same codec X.</li>
+ *       reflection — R8 keep rules ship in META-INF/proguard/iso8583.pro). The qualified form
+ *       {@code com.base.iso.fields.X} is also accepted.</li>
  *   <li>{@code id}/{@code length} may be numbers or numeric strings; {@code pad} a boolean or
  *       "true"/"false"; {@code name} optional.</li>
  * </ul>
@@ -42,13 +42,10 @@ public class GenericJSONPackager extends aBasePackager {
 
     /** Package holding every field codec that a layout may name. */
     private static final String FIELDS_PACKAGE = "com.base.iso.fields.";
-    /** jPOS codec package; its class names map to the same-named codecs here (porting layouts). */
-    private static final String JPOS_PACKAGE = "org.jpos.iso.";
     /** Accepted values for a sub-layout's {@code packager} attribute / key. */
     private static final List<String> SUB_PACKAGERS = Arrays.asList(
             "GenericSubFieldPackager",
-            "com.base.iso.packager.GenericSubFieldPackager",
-            "org.jpos.iso.packager.GenericSubFieldPackager");
+            "com.base.iso.packager.GenericSubFieldPackager");
     /** Field ids 0 (MTI) .. 128 (primary + secondary bitmap range). */
     private static final int MAX_FIELD_ID = 128;
 
@@ -100,7 +97,7 @@ public class GenericJSONPackager extends aBasePackager {
      *
      * Sub-fields: an entry with a {@code "subfields"} array is a sub-layout. Its own id/length/class
      * describe the outer field (e.g. IFB_LLLBINARY); the array lists the sub-fields. Optional keys
-     * (same meaning as the jPOS XML attributes): {@code emitBitmap}, {@code bitmapField} (default 1),
+     * (same meaning as the XML attributes): {@code emitBitmap}, {@code bitmapField} (default 1),
      * {@code firstField}, {@code maxValidField}. See {@link GenericSubFieldPackager}.
      *
      * @param jsonString layout document (never a path — the library does not read files)
@@ -117,19 +114,18 @@ public class GenericJSONPackager extends aBasePackager {
     }
 
     /**
-     * Replaces the layout with the one described by {@code xmlString}, in the jPOS GenericPackager
-     * format: root {@code <isopackager>} with one {@code <isofield id length name class pad/>} per
+     * Replaces the layout with the one described by {@code xmlString}. Format: root {@code <isopackager>} with one {@code <isofield id length name class pad/>} per
      * field (attribute values follow the same rules as the JSON keys).
      *
      * Sub-fields: {@code <isofieldpackager id length name class packager="...GenericSubFieldPackager"
      * [emitBitmap] [bitmapField] [firstField] [maxValidField]>} containing {@code <isofield>} (and
-     * nested {@code <isofieldpackager>}) children, exactly as in jPOS. Only GenericSubFieldPackager
+     * nested {@code <isofieldpackager>}) children. Only GenericSubFieldPackager
      * semantics are supported; tagged/TLV sub-packagers ({@code tagMapper}, {@code tagSize},
      * {@code lenSize}, other {@code packager} classes) are rejected.
      *
      * Same fail-loud contract as {@link #setFieldsFromJson(String)}; also rejects unknown child
-     * elements. A DOCTYPE that only references {@code genericpackager.dtd} is accepted and ignored
-     * (nothing is fetched).
+     * elements. A DOCTYPE that only names an external DTD is accepted and ignored (nothing is
+     * fetched).
      *
      * @param xmlString layout document (never a path — the library does not read files)
      * @throws IllegalArgumentException if the layout is invalid
@@ -245,8 +241,8 @@ public class GenericJSONPackager extends aBasePackager {
         int firstField = f.containsKey("firstField") ? intValue(f, "firstField", e.where) : -1;
         boolean hasBitmapCodec = bitmapField >= 0 && bitmapField < inner.length
                 && inner[bitmapField] instanceof BitMapFieldBase;
-        // jPOS default is emitBitmap=true; when the attribute is absent we infer it from the layout
-        // (a valid jPOS layout with the default always has the bitmap codec at bitmapField).
+        // emitBitmap absent → inferred from the layout: bitmapped when the codec at bitmapField
+        // is a bitmap codec.
         boolean bitmapped = f.containsKey("emitBitmap") ? boolValue(f.get("emitBitmap")) : hasBitmapCodec;
         if (f.containsKey("maxValidField")) {
             int maxValid = intValue(f, "maxValidField", e.where);
@@ -315,8 +311,6 @@ public class GenericJSONPackager extends aBasePackager {
         String shortClassName = className;
         if (className.startsWith(FIELDS_PACKAGE))
             shortClassName = className.substring(FIELDS_PACKAGE.length());
-        else if (className.startsWith(JPOS_PACKAGE))
-            shortClassName = className.substring(JPOS_PACKAGE.length());
         String fullClassName = FIELDS_PACKAGE + shortClassName;
         Class<?> clazz;
         try {

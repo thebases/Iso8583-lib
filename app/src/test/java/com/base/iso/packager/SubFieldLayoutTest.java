@@ -25,7 +25,7 @@ import com.base.iso.fields.base.aISOFieldBase;
 import com.base.iso.util.ISOUtil;
 
 /**
- * Sub-field layouts (jPOS {@code <isofieldpackager>} / JSON {@code "subfields"}):
+ * Sub-field layouts (XML {@code <isofieldpackager>} / JSON {@code "subfields"}):
  * F48 = positional sub-fields inside IFB_LLLCHAR, F63 = bitmapped sub-fields inside IFB_LLLBINARY.
  *
  * Expected bytes are derived by hand from the codec rules pinned in FieldCodecTest
@@ -36,23 +36,23 @@ class SubFieldLayoutTest {
     // ----------------------------------------------------------------- layouts
 
     static final String XML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-            + "<!DOCTYPE isopackager SYSTEM \"genericpackager.dtd\">\n"
+            + "<!DOCTYPE isopackager SYSTEM \"layout.dtd\">\n"
             + "<isopackager>\n"
-            + "  <isofield id=\"0\" length=\"4\" name=\"MTI\" class=\"org.jpos.iso.IFB_NUMERIC\" pad=\"true\"/>\n"
-            + "  <isofield id=\"1\" length=\"16\" name=\"BIT MAP\" class=\"org.jpos.iso.IFB_BITMAP\"/>\n"
-            + "  <isofield id=\"11\" length=\"6\" name=\"STAN\" class=\"org.jpos.iso.IFB_NUMERIC\" pad=\"true\"/>\n"
-            + "  <isofieldpackager id=\"48\" length=\"999\" name=\"PRIVATE POSITIONAL\" class=\"org.jpos.iso.IFB_LLLCHAR\"\n"
-            + "        packager=\"org.jpos.iso.packager.GenericSubFieldPackager\" emitBitmap=\"false\">\n"
-            + "    <isofield id=\"1\" length=\"2\" name=\"TABLE\" class=\"org.jpos.iso.IF_CHAR\"/>\n"
-            + "    <isofield id=\"2\" length=\"20\" name=\"DATA\" class=\"org.jpos.iso.IFB_LLCHAR\"/>\n"
-            + "    <isofield id=\"3\" length=\"4\" name=\"NUM\" class=\"org.jpos.iso.IFB_NUMERIC\" pad=\"true\"/>\n"
+            + "  <isofield id=\"0\" length=\"4\" name=\"MTI\" class=\"IFB_NUMERIC\" pad=\"true\"/>\n"
+            + "  <isofield id=\"1\" length=\"16\" name=\"BIT MAP\" class=\"IFB_BITMAP\"/>\n"
+            + "  <isofield id=\"11\" length=\"6\" name=\"STAN\" class=\"IFB_NUMERIC\" pad=\"true\"/>\n"
+            + "  <isofieldpackager id=\"48\" length=\"999\" name=\"PRIVATE POSITIONAL\" class=\"IFB_LLLCHAR\"\n"
+            + "        packager=\"GenericSubFieldPackager\" emitBitmap=\"false\">\n"
+            + "    <isofield id=\"1\" length=\"2\" name=\"TABLE\" class=\"IF_CHAR\"/>\n"
+            + "    <isofield id=\"2\" length=\"20\" name=\"DATA\" class=\"IFB_LLCHAR\"/>\n"
+            + "    <isofield id=\"3\" length=\"4\" name=\"NUM\" class=\"IFB_NUMERIC\" pad=\"true\"/>\n"
             + "  </isofieldpackager>\n"
-            + "  <isofieldpackager id=\"63\" length=\"999\" name=\"PRIVATE BITMAPPED\" class=\"org.jpos.iso.IFB_LLLBINARY\"\n"
-            + "        packager=\"org.jpos.iso.packager.GenericSubFieldPackager\" emitBitmap=\"true\" bitmapField=\"0\">\n"
-            + "    <isofield id=\"0\" length=\"8\" name=\"SUB BITMAP\" class=\"org.jpos.iso.IFB_BITMAP\"/>\n"
-            + "    <isofield id=\"1\" length=\"2\" name=\"TABLE\" class=\"org.jpos.iso.IF_CHAR\"/>\n"
-            + "    <isofield id=\"2\" length=\"20\" name=\"DATA\" class=\"org.jpos.iso.IFB_LLCHAR\"/>\n"
-            + "    <isofield id=\"3\" length=\"4\" name=\"BIN\" class=\"org.jpos.iso.IFB_BINARY\"/>\n"
+            + "  <isofieldpackager id=\"63\" length=\"999\" name=\"PRIVATE BITMAPPED\" class=\"IFB_LLLBINARY\"\n"
+            + "        packager=\"GenericSubFieldPackager\" emitBitmap=\"true\" bitmapField=\"0\">\n"
+            + "    <isofield id=\"0\" length=\"8\" name=\"SUB BITMAP\" class=\"IFB_BITMAP\"/>\n"
+            + "    <isofield id=\"1\" length=\"2\" name=\"TABLE\" class=\"IF_CHAR\"/>\n"
+            + "    <isofield id=\"2\" length=\"20\" name=\"DATA\" class=\"IFB_LLCHAR\"/>\n"
+            + "    <isofield id=\"3\" length=\"4\" name=\"BIN\" class=\"IFB_BINARY\"/>\n"
             + "  </isofieldpackager>\n"
             + "</isopackager>\n";
 
@@ -277,7 +277,7 @@ class SubFieldLayoutTest {
 
     @Test
     void defaultBitmapFieldIsOneAndEmitBitmapInferred() throws Exception {
-        // jPOS defaults: bitmapField=1; emitBitmap omitted → bitmapped because id 1 is a bitmap codec
+        // defaults: bitmapField=1; emitBitmap omitted → bitmapped because id 1 is a bitmap codec
         String json = "{\"isofields\":["
                 + "{\"id\":0,\"length\":4,\"class\":\"IFB_NUMERIC\",\"pad\":true},"
                 + "{\"id\":1,\"length\":16,\"class\":\"IFB_BITMAP\"},"
@@ -349,7 +349,7 @@ class SubFieldLayoutTest {
                 + "<isofield id=\"1\" length=\"16\" class=\"IFB_BITMAP\"/>";
         String[][] cases = {
             { "not supported", "<isofieldpackager id=\"48\" length=\"999\" class=\"IFB_LLLCHAR\""
-                    + " packager=\"org.jpos.iso.packager.GenericTaggedFieldsPackager\"><isofield id=\"1\" length=\"2\" class=\"IF_CHAR\"/></isofieldpackager>" },
+                    + " packager=\"TaggedFieldsPackager\"><isofield id=\"1\" length=\"2\" class=\"IF_CHAR\"/></isofieldpackager>" },
             { "tagMapper", "<isofieldpackager id=\"48\" length=\"999\" class=\"IFB_LLLCHAR\" tagMapper=\"x\">"
                     + "<isofield id=\"1\" length=\"2\" class=\"IF_CHAR\"/></isofieldpackager>" },
             { "bitmap", "<isofieldpackager id=\"63\" length=\"999\" class=\"IFB_LLLBINARY\" emitBitmap=\"true\" bitmapField=\"0\">"

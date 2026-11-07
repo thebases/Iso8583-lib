@@ -7,7 +7,7 @@ import com.base.iso.models.padder.NullPadder;
 import com.base.iso.models.prefixer.BinaryPrefixer;
 
 /**
- * ISOFieldPackager Binary Hex EBCDIC LLCHAR
+ * aISOFieldBase Binary Hex EBCDIC LLCHAR
  * IFB_LLHCHAR with EBCDIC conversion
  * (VISA's SMS field 54, additional amounts) 
  * @see BaseComponent

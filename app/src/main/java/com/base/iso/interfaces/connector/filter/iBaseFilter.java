@@ -7,7 +7,7 @@ import com.base.iso.util.log.LogEvent;
 
 /**
  * An iBaseFilter has the oportunity to modify an incoming or
- * outgoing ISOMsg that is about to go thru an ISOChannel.
+ * outgoing ISOMsg that is about to go thru an connector.
  * It also has the chance to Veto by throwing an Exception 
  */
 public interface iBaseFilter {
@@ -28,7 +28,7 @@ public interface iBaseFilter {
         }
     }
     /**
-     * @param channel current ISOChannel instance
+     * @param channel current connector instance
      * @param m ISOMsg to filter
      * @param evt LogEvent
      * @return an ISOMsg (possibly parameter m)

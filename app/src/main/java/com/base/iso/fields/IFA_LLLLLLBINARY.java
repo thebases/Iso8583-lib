@@ -6,7 +6,7 @@ import com.base.iso.models.interpreter.LiteralBinaryInterpreter;
 import com.base.iso.models.prefixer.AsciiPrefixer;
 
 /**
- * ISOFieldPackager ASCII variable len BINARY 
+ * aISOFieldBase ASCII variable len BINARY 
  * @see BaseComponent
  */
 public class IFA_LLLLLLBINARY extends BinaryFieldBase {

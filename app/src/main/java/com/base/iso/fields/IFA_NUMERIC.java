@@ -7,7 +7,7 @@ import com.base.iso.models.padder.LeftPadder;
 import com.base.iso.models.prefixer.NullPrefixer;
 
 /**
- * ISOFieldPackager ASCII NUMERIC.
+ * aISOFieldBase ASCII NUMERIC.
  * Left padder with zeros, ASCII Interpretation, and no length prefix.  
  * @see BaseComponent
  */

@@ -24,7 +24,7 @@ public class IFB_HEX extends StringFieldBase {
                 NullPrefixer.INSTANCE);
     }
 
-    /** Must override ISOFieldPackager method to set the Interpreter correctly */
+    /** Must override aISOFieldBase method to set the Interpreter correctly */
     public void setPad(boolean pad)
     {
         setInterpreter(pad ? HEXInterpreter.LEFT_PADDED : HEXInterpreter.RIGHT_PADDED_F);

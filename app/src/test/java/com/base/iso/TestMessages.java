@@ -126,19 +126,19 @@ public final class TestMessages {
     }
 
     /**
-     * The same ISO87B layout in the jPOS GenericPackager XML format, with a jPOS DOCTYPE line and
-     * jPOS-qualified class names (org.jpos.iso.X) to prove ported layouts load unchanged.
+     * The same ISO87B layout in the XML layout format, with an external DOCTYPE line and
+     * fully qualified class names (com.base.iso.fields.X) to cover both accepted spellings.
      */
     public static String iso87bLayoutXml() {
         ISO87BPackager ref = new ISO87BPackager();
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-                + "<!DOCTYPE isopackager SYSTEM \"genericpackager.dtd\">\n<isopackager>\n");
+                + "<!DOCTYPE isopackager SYSTEM \"layout.dtd\">\n<isopackager>\n");
         for (int i = 0; i <= 128; i++) {
             aISOFieldBase f = ref.getFieldPackager(i);
             sb.append("  <isofield id=\"").append(i)
               .append("\" length=\"").append(f.getLength())
               .append("\" name=\"").append(com.base.iso.util.xml.Xml.escapeAttribute(f.getDescription()))
-              .append("\" class=\"org.jpos.iso.").append(f.getClass().getSimpleName())
+              .append("\" class=\"com.base.iso.fields.").append(f.getClass().getSimpleName())
               .append("\" pad=\"").append(iso87bPad(f)).append("\"/>\n");
         }
         return sb.append("</isopackager>\n").toString();

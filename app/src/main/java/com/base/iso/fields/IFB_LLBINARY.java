@@ -6,7 +6,7 @@ import com.base.iso.models.interpreter.LiteralBinaryInterpreter;
 import com.base.iso.models.prefixer.BcdPrefixer;
 
 /**
- * ISOFieldPackager Binary LLBINARY 
+ * aISOFieldBase Binary LLBINARY 
  * @see BaseComponent
  */
 public class IFB_LLBINARY extends BinaryFieldBase {

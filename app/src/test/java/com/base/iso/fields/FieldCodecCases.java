@@ -117,7 +117,7 @@ final class FieldCodecCases {
         c.add(new Case("IFA_LLLBINARY", () -> new IFA_LLLBINARY(100, "t"), bytes(2), "303032A0A1", false)); // FINDING: over-length accepted (no max check)
         c.add(new Case("IFA_AMOUNT", () -> new IFA_AMOUNT(9, "t"), "C00001000", "433030303031303030", true));
         // --- EBCDIC ---
-        c.add(new Case("IFAE_LLCHAR", () -> new IFAE_LLCHAR(20, "t"), "ABC", "3033C1C2C3", true)); // FINDING: prefix is ASCII "03", not EBCDIC F0F3 (jPOS IFAE_LLCHAR uses EBCDIC prefix)
+        c.add(new Case("IFAE_LLCHAR", () -> new IFAE_LLCHAR(20, "t"), "ABC", "3033C1C2C3", true)); // FINDING: prefix is ASCII "03", not EBCDIC F0F3 (EBCDIC codecs normally use an EBCDIC prefix too)
         // --- tagged TLV (sub-field 1 of field 48) ---
         c.add(new Case("IFA_TTLLCHAR", () -> tagged(new IFA_TTLLCHAR(), 20, "01"), "ABC", "30313033414243", true));
         c.add(new Case("IFA_TTLLLCHAR", () -> tagged(new IFA_TTLLLCHAR(), 99, "01"), "ABC", "3031303033414243", true));

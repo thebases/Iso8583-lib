@@ -39,7 +39,7 @@ public class ISOField
         value = v;
     }
     /**
-     * not available on Leaf - always throw ISOException
+     * not available on Leaf - always throw BaseException
      * @return
      * @exception BaseException
      */
@@ -48,7 +48,7 @@ public class ISOField
         throw new BaseException ("Not available on Leaf");
     }
     /**
-     * not available on Leaf - always throw ISOException
+     * not available on Leaf - always throw BaseException
      * @param b
      * @return
      * @exception BaseException
@@ -58,7 +58,7 @@ public class ISOField
         throw new BaseException ("Not available on Leaf");
     }
     /**
-     * not available on Leaf - always throw ISOException
+     * not available on Leaf - always throw BaseException
      * @param in
      * @exception BaseException
      */

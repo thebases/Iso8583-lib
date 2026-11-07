@@ -27,10 +27,10 @@ public class BCDConnector extends BaseConnector {
         super();
     }
     /**
-     * Construct client ISOChannel
+     * Construct client connector
      * @param host  server TCP Address
      * @param port  server port number
-     * @param p     an ISOPackager
+     * @param p     an iPackager
      * @param TPDU  an optional raw header (i.e. TPDU)
      * @see iPackager
      */
@@ -39,8 +39,8 @@ public class BCDConnector extends BaseConnector {
         this.header = TPDU;
     }
     /**
-     * Construct server ISOChannel
-     * @param p     an ISOPackager
+     * Construct server connector
+     * @param p     an iPackager
      * @param TPDU  an optional raw header (i.e. TPDU)
      * @exception IOException
      * @see iPackager
@@ -50,8 +50,8 @@ public class BCDConnector extends BaseConnector {
         this.header = TPDU;
     }
     /**
-     * constructs server ISOChannel associated with a Server Socket
-     * @param p     an ISOPackager
+     * constructs server connector associated with a Server Socket
+     * @param p     an iPackager
      * @param TPDU  an optional raw header (i.e. TPDU)
      * @param serverSocket where to accept a connection
      * @exception IOException
@@ -107,8 +107,8 @@ public class BCDConnector extends BaseConnector {
             serverOut.write(h);
     }
     /**
-     * New QSP compatible signature (see QSP's ConfigChannel)
-     * @param header String as seen by QSP
+     * Sets the header (TPDU) from its hex text, e.g. "6000010000".
+     * @param header header as a hex string
      */
     public void setHeader (String header) {
         super.setHeader (ISOUtil.str2bcd(header, false));
@@ -119,7 +119,7 @@ public class BCDConnector extends BaseConnector {
     LogEvent evt = new LogEvent(this, "send");
     try {
         if (!isConnected())
-            throw new BaseException("unconnected ISOChannel");
+            throw new BaseException("unconnected connector");
 
         // 1) Build payload = TPDU + b
         final byte[] tpdu = (TPDU == null) ? new byte[0] : TPDU;

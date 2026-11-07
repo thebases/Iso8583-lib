@@ -7,7 +7,6 @@ import com.base.iso.interfaces.iPadder;
  * Implements the Padder interface for padding strings and byte arrays on the
  * Right.
  * 
- * @author joconnor
  * @version $Revision$ $Date$
  */
 public class RightPadder implements iPadder
