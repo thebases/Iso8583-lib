@@ -74,14 +74,8 @@ public interface iConnector extends iSource {
      */
     public void setUsable(boolean b);
 
-    /**
-     * associates this connector with a name (see BaseConnector.getChannel)
-     * @param name name to register
-     */
-    public void setName (String name);
-
    /**
-    * @return this connector's name ("" if no name was set)
+    * @return peer address of the last accepted connection ("" if none)
     */
     public String getName();
 

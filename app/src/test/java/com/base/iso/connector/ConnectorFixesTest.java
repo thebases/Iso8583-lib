@@ -2,19 +2,12 @@ package com.base.iso.connector;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +17,7 @@ import com.base.iso.core.ISOMsg;
 import com.base.iso.packager.ISO87BPackager;
 import com.base.iso.util.ISOUtil;
 
-/** T7, T8, T9, T18 — transport fixes, each pinned by a test that failed on 402fc3e. */
+/** T7, T8, T9 + host fallback — transport fixes, each pinned by a test that failed on 402fc3e. */
 class ConnectorFixesTest {
 
     private static final String TPDU = "6000010002";
@@ -109,44 +102,36 @@ class ConnectorFixesTest {
         }
     }
 
-    // --- T18: channel registry is safe under concurrent setName ---
+    // --- setHosts: fallback hosts replace the removed "alternate-host" config keys ---
 
     @Test
-    void concurrentSetNameLosesNothing() throws Exception {
-        final int threads = 8, perThread = 500;
-        ExecutorService pool = Executors.newFixedThreadPool(threads);
-        try {
-            List<Future<List<NCCConnector>>> fs = new ArrayList<>();
-            for (int t = 0; t < threads; t++) {
-                final int id = t;
-                fs.add(pool.submit(() -> {
-                    List<NCCConnector> mine = new ArrayList<>();
-                    for (int i = 0; i < perThread; i++) {
-                        NCCConnector c = new NCCConnector();
-                        c.setName("t18-" + id + "-" + i);
-                        mine.add(c);
-                    }
-                    return mine;
-                }));
+    void connectFallsBackToNextHost() throws Exception {
+        int deadPort;
+        try (ServerSocket tmp = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            deadPort = tmp.getLocalPort(); // closed below → connection refused
+        }
+        try (ServerSocket live = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            NCCConnector c = new NCCConnector(null, 0, p, null);
+            c.setHosts(new String[] { "127.0.0.1", "127.0.0.1" },
+                       new int[] { deadPort, live.getLocalPort() });
+            c.setConnectTimeout(2000);
+            c.connect();
+            try {
+                assertTrue(c.isConnected());
+                assertEquals(live.getLocalPort(), c.getSocket().getPort());
+                assertEquals(deadPort, c.getPort()); // primary stays hosts[0]
+            } finally {
+                c.disconnect();
             }
-            for (int t = 0; t < threads; t++) {
-                List<NCCConnector> mine = fs.get(t).get(60, TimeUnit.SECONDS);
-                for (int i = 0; i < perThread; i++)
-                    assertSame(mine.get(i), BaseConnector.getChannel("t18-" + t + "-" + i));
-            }
-        } finally {
-            pool.shutdownNow();
         }
     }
 
     @Test
-    void renameAndUnregisterRemoveOldEntry() {
+    void setHostsRejectsMismatchedArrays() {
         NCCConnector c = new NCCConnector();
-        c.setName("t18-old");
-        c.setName("t18-new");
-        assertEquals(null, BaseConnector.getChannel("t18-old"));
-        assertSame(c, BaseConnector.getChannel("t18-new"));
-        c.unregister();
-        assertEquals(null, BaseConnector.getChannel("t18-new"));
+        assertThrows(IllegalArgumentException.class,
+                () -> c.setHosts(new String[] { "a", "b" }, new int[] { 1 }));
+        assertThrows(IllegalArgumentException.class,
+                () -> c.setHosts(new String[0], new int[0]));
     }
 }

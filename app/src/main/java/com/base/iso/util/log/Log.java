@@ -20,9 +20,6 @@ public class Log implements iLogSource {
     public Log () {
         super();
     }
-    public static Log getLog (String logName, String realm) {
-        return new Log (Logger.getLogger (logName), realm);
-    }
     public Log (Logger logger, String realm) {
         setLogger (logger, realm);
     }

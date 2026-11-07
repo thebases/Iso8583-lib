@@ -2,9 +2,7 @@ package com.base.iso.util.log;
 
 import java.util.Iterator;
 import java.util.Vector;
-import java.util.concurrent.ConcurrentHashMap;
 
-import com.base.iso.interfaces.iDestroyable;
 import com.base.iso.interfaces.log.iLogListener;
 import com.base.iso.interfaces.log.iLogProducer;
 import com.base.iso.interfaces.log.iLogSource;
@@ -24,15 +22,12 @@ import com.base.iso.interfaces.log.iLoggeable;
 @SuppressWarnings("unchecked")
 public class Logger implements iLogProducer {
     
-    String name;
     Vector listeners;
     static volatile boolean versionShown = false;
-    private static final ConcurrentHashMap<String, Logger> loggers = new ConcurrentHashMap<>();
 
     public Logger () {
         super();
         listeners = new Vector ();
-        name = "";
     }
     public void addListener (iLogListener l) {
         synchronized (listeners) {
@@ -46,13 +41,6 @@ public class Logger implements iLogProducer {
     }
     public void removeAllListeners () {
         synchronized (listeners) {
-            Iterator i = listeners.iterator();
-            while (i.hasNext()) {
-                iLogListener l = ((iLogListener) i.next());
-                if (l instanceof iDestroyable) {
-                    ((iDestroyable) l).destroy ();
-                }
-            }
             listeners.clear ();
         }
     }
@@ -72,38 +60,6 @@ public class Logger implements iLogProducer {
                     evt = ((iLogListener) i.next()).log (evt);
             }
         }
-    }
-    /**
-     * Registers this Logger under {@code name} (see {@link #getLogger(String)}).
-     * @param name name to register
-     */
-    public void setName (String name) {
-        this.name = name;
-        loggers.putIfAbsent("logger."+name, this);  // register in map
-    }
-    /**
-     * destroy logger
-     */
-    public void destroy () {
-        loggers.remove("logger."+name);  // remove from a map
-        removeAllListeners ();
-    }
-    /**
-     * @return logger instance with given name. Creates one if necessary
-     */
-    public synchronized static Logger getLogger (String name) {
-   
-        return loggers.computeIfAbsent(name, key -> {
-            Logger l = new Logger();
-            l.setName(key);
-            return l;
-        });
-    }
-    /**
-     * @return this logger's name ("" if no name was set)
-     */
-    public String getName() {
-        return this.name;
     }
     /**
      * Used by heavy used methods to avoid LogEvent creation 

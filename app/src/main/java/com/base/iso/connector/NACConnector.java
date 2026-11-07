@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 
-import com.base.iso.config.Configuration;
-import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.BaseException;
 import com.base.iso.core.ISOMsg;
 import com.base.iso.interfaces.iPackager;
@@ -101,11 +99,15 @@ public class NACConnector extends BaseConnector {
     public void setHeader (String header) {
         super.setHeader (ISOUtil.str2bcd(header, false));
     }
-    public void setConfiguration (Configuration cfg) 
-        throws ConfigurationException
-    {
-        super.setConfiguration (cfg);
-        tpduSwap = cfg.getBoolean ("tpdu-swap", true);
+    /**
+     * @param tpduSwap swap TPDU source/destination addresses when sending a message whose own
+     *                 header is a 5-byte TPDU (default true)
+     */
+    public void setTpduSwap (boolean tpduSwap) {
+        this.tpduSwap = tpduSwap;
+    }
+    public boolean isTpduSwap () {
+        return tpduSwap;
     }
     
     public void sendAscii(byte[] b, byte[] TPDU) throws IOException, BaseException {

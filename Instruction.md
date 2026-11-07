@@ -6,7 +6,7 @@
 - packing and unpacking them with a packager (`ISO87BPackager`, `ISO93BPackager`, or a JSON-defined `GenericJSONPackager`);
 - framing them over TCP with a connector (`NCCConnector`, `BCDConnector`, `NACConnector`, `HEXConnector`).
 
-The library **never reads files**. Your app or service reads its own configuration (Android asset, config service, secret store) and passes the library a `String`, `Properties`, `KeyStore` or `SSLContext`.
+The library **never reads files**. Your app or service reads its own configuration (Android asset, config service, secret store) and passes the library a `String`, `KeyStore` or `SSLContext`. Everything else is set with plain setters; there is no configuration object or name registry.
 
 The same jar serves two kinds of consumer:
 
@@ -250,7 +250,7 @@ A connector frames the packed message as **[length prefix][header/TPDU][packed m
 
 | Connector | Length prefix | Header |
 |---|---|---|
-| `NCCConnector` | 2-byte BCD (max 9999) | TPDU; src/dest swapped when the message carries a 5-byte header (`tpdu-swap`, default on) |
+| `NCCConnector` | 2-byte BCD (max 9999) | TPDU; src/dest swapped when the message carries a 5-byte header (`setTpduSwap(false)` to turn off) |
 | `BCDConnector` | 2-byte BCD | TPDU; src/dest always swapped for a 5-byte message header |
 | `NACConnector` | 2-byte binary, big-endian | TPDU; swap like NCC |
 | `HEXConnector` | 4 ASCII hex characters (max 0xFFFF) | optional |
@@ -276,6 +276,20 @@ try {
 
   Check the host spec before you use them.
 
+Connector options (all setters, call before `connect()`):
+
+| Setter | Default | Effect |
+|---|---|---|
+| `setHosts(String[], int[])` | the constructor's host/port | Fallback hosts, tried in order until one accepts |
+| `setTimeout(ms)` | 0 (wait forever) | Socket read timeout |
+| `setConnectTimeout(ms)` | 0 (OS default) | TCP connect timeout (not used with a socket factory) |
+| `setKeepAlive(bool)` | false | TCP SO_KEEPALIVE |
+| `setExpectKeepAlive(bool)` | false | `receive()` skips zero-length frames |
+| `setMaxPacketLength(n)` | 100000 | Larger frames are rejected |
+| `setOverrideHeader(bool)` | false | Always send the connector header, ignoring `ISOMsg.getHeader()` |
+| `setLocalAddress(iface, port)` | none | Bind the local side |
+| `setTpduSwap(bool)` (NCC, NAC) | true | Swap a 5-byte message header's src/dest |
+
 ### TLS
 
 `GenericSSLSocketFactory` (and the legacy name `SunJSSESocketFactory`) is **secure by default**:
@@ -294,9 +308,7 @@ conn.setSocketFactory(tls);
 
 Alternatively, pass a fully built context with `setSSLContext(SSLContext)`.
 
-Trust-all (`setInsecureTrustAll(true)` or config `insecure-trust-all=true`) disables validation and logs a warning. Use it in test labs only.
-
-Keystore paths are no longer accepted: config key `keystore` throws `ConfigurationException`.
+Trust-all (`setInsecureTrustAll(true)`) disables validation and logs a warning. Use it in test labs only.
 
 ## 6. Logging without leaking card data
 
@@ -323,7 +335,7 @@ packager.setLogger(logger, "host-a");
 - **Packagers are shareable** across threads once configured. pack/unpack keep no per-call state.
 - **Reloading a JSON layout:** don't call `setFieldsFromJson` on a packager other threads are using. Build a new `GenericJSONPackager`, then swap the reference (e.g. a `volatile` field or `AtomicReference`).
 - **One `ISOMsg` per transaction.** Match responses by F11/F37.
-- `BaseConnector.setName(n)` registers the connector for `BaseConnector.getChannel(n)`. The registry is thread-safe, and renaming drops the old entry. Call `unregister()` when you retire a named connector.
+- There is no global connector or logger registry. Keep references to your connectors and loggers yourself.
 
 ## 8. Android specifics
 
@@ -346,6 +358,5 @@ packager.setLogger(logger, "host-a");
 | `connector.BaseConnector` | Socket lifecycle, send/receive, filters, timeouts |
 | `util.ISOUtil` | Hex/BCD helpers: `hexString`, `hex2byte`, `str2bcd`, `bcd2str`, `protect` |
 | `util.log.Logger`, `ProtectLogListener`, `SimpleLogListener` | Logging |
-| `config.SimpleConfiguration` | `Properties`-backed config for `setConfiguration(...)` |
 
 Codec name decoding: `LL`/`LLL` = 2-/3-digit length prefix; `NUM` = numeric; `CHAR` = text; `BINARY` = raw bytes; `IFB_` = binary/BCD encoding; `IFA_` = ASCII; `LLH`/`LLLH` = binary length prefix instead of BCD.

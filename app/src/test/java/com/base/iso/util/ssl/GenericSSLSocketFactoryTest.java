@@ -1,6 +1,7 @@
 package com.base.iso.util.ssl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,7 +13,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.security.KeyStore;
-import java.util.Properties;
 
 import javax.net.ssl.SSLSocket;
 
@@ -20,9 +20,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import com.base.iso.config.ConfigurationException;
-import com.base.iso.config.SimpleConfiguration;
 
 /**
  * T11 — TLS is secure by default: untrusted certs and host-name mismatches are rejected,
@@ -122,20 +119,12 @@ class GenericSSLSocketFactoryTest {
 
     @Test
     void trustAllOnlyOnExplicitOptIn() throws Exception {
-        SimpleConfiguration cfg = new SimpleConfiguration(new Properties());
-        cfg.put("insecure-trust-all", "true");
         SunJSSESocketFactory f = new SunJSSESocketFactory(); // legacy name, same secure class
-        f.setConfiguration(cfg);
+        assertFalse(f.isInsecureTrustAll()); // secure by default
+        f.setInsecureTrustAll(true);
         assertTrue(f.isInsecureTrustAll());
         try (Socket s = f.createSocket("127.0.0.1", port())) {
             assertEquals(42, s.getInputStream().read());
         }
-    }
-
-    @Test
-    void keystorePathConfigIsRejected() {
-        SimpleConfiguration cfg = new SimpleConfiguration(new Properties());
-        cfg.put("keystore", "/home/user/.keystore");
-        assertThrows(ConfigurationException.class, () -> new GenericSSLSocketFactory().setConfiguration(cfg));
     }
 }

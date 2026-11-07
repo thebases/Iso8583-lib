@@ -3,9 +3,6 @@ package com.base.iso.connector;
 
 import javax.net.ssl.SSLSocket;
 
-import com.base.iso.config.Configurable;
-import com.base.iso.config.Configuration;
-import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.BaseHeader;
 import com.base.iso.core.BaseException;
 import com.base.iso.core.ISOHeader;
@@ -30,9 +27,7 @@ import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Observable;
 
 /**
@@ -51,7 +46,7 @@ import java.util.Observable;
  */
 @SuppressWarnings("unchecked")
 public abstract class BaseConnector extends Observable
-        implements iFilteredConnector, Configurable, Cloneable, iClientConnector, iServerConnector, iFactoryConnector,
+        implements iFilteredConnector, Cloneable, iClientConnector, iServerConnector, iFactoryConnector,
         iLogSource, iBaseChannel {
     private Socket socket;
     private String host, localIface;
@@ -63,7 +58,6 @@ public abstract class BaseConnector extends Observable
     private boolean expectKeepAlive;
     private boolean soLingerOn = true;
     private int soLingerSeconds = 5;
-    private Configuration cfg;
     protected boolean usable;
     protected boolean overrideHeader;
     private String name;
@@ -78,8 +72,6 @@ public abstract class BaseConnector extends Observable
     protected ServerSocket serverSocket = null;
     protected List<iBaseFilter> incomingFilters, outgoingFilters;
     protected iClientSocketFactory socketFactory = null;
-    /** Name registry for {@link #getChannel(String)}; concurrent because services name connectors from many threads (T18). */
-    private static final Map<String, iConnector> channelMap = new ConcurrentHashMap<>();
 
     protected int[] cnt;
 
@@ -87,7 +79,6 @@ public abstract class BaseConnector extends Observable
     protected String realm = null;
     protected String originalRealm = null;
     protected byte[] header = null;
-    private static final int DEFAULT_TIMEOUT = 300000;
 
     /**
      * constructor shared by server and client
@@ -892,25 +883,7 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * Registers this connector under {@code name} (see {@link #getChannel(String)}).
-     *
-     * @param name name to register
-     */
-    public void setName(String name) {
-        // drop the previous registration so renamed connectors don't stay reachable/leak (T18)
-        if (this.name != null && this.name.length() > 0)
-            channelMap.remove("channel." + this.name, this);
-        this.name = name;
-        channelMap.put("channel." + name, this);
-    }
-
-    /** Removes this connector from the {@link #getChannel(String)} registry (call when retiring it). */
-    public void unregister() {
-        channelMap.remove("channel." + name, this);
-    }
-
-    /**
-     * @return this connector's name ("" if no name was set)
+     * @return peer address ("ip:port") of the last accepted connection; "" for client connectors
      */
     public String getName() {
         return this.name;
@@ -1025,58 +998,58 @@ public abstract class BaseConnector extends Observable
     }
 
     /**
-     * Implements Configurable<br>
-     * Properties:<br>
-     * <ul>
-     * <li>host - destination host (if ClientChannel)
-     * <li>port - port number (if ClientChannel)
-     * <li>local-iface - local interfase to use (if ClientChannel)
-     * <li>local-port - local port to bind (if ClientChannel)
-     * </ul>
-     * (host not present indicates a ServerChannel)
+     * Sets the primary host plus fallback hosts, tried in order by {@link #connect()}
+     * until one accepts. {@code hosts[0]} / {@code ports[0]} become {@link #getHost()} / {@link #getPort()}.
      *
-     * @param cfg Configuration
-     * @throws ConfigurationException
+     * @param hosts host names or IPs (at least one)
+     * @param ports port per host, same length as {@code hosts}
+     * @throws IllegalArgumentException if the arrays are empty or their lengths differ
      */
-    public void setConfiguration(Configuration cfg)
-            throws ConfigurationException {
-        this.cfg = cfg;
-        String h = cfg.get("host");
-        int port = cfg.getInt("port");
-        maxPacketLength = cfg.getInt("max-packet-length", 100000);
-        if (h != null && h.length() > 0) {
-            if (port == 0)
-                throw new ConfigurationException("invalid port for host '" + h + "'");
-            setHost(h, port);
-            setLocalAddress(cfg.get("local-iface", null), cfg.getInt("local-port"));
-            String[] altHosts = cfg.getAll("alternate-host");
-            int[] altPorts = cfg.getInts("alternate-port");
-            hosts = new String[altHosts.length + 1];
-            ports = new int[altPorts.length + 1];
-            if (hosts.length != ports.length) {
-                throw new ConfigurationException(
-                        "alternate host/port misconfiguration");
-            }
-            hosts[0] = host;
-            ports[0] = port;
-            System.arraycopy(altHosts, 0, hosts, 1, altHosts.length);
-            System.arraycopy(altPorts, 0, ports, 1, altPorts.length);
-        }
-        setOverrideHeader(cfg.getBoolean("override-header", false));
-        keepAlive = cfg.getBoolean("keep-alive", false);
-        expectKeepAlive = cfg.getBoolean("expect-keep-alive", false);
-        if (socketFactory != this && socketFactory instanceof Configurable)
-            ((Configurable) socketFactory).setConfiguration(cfg);
-        try {
-            setTimeout(cfg.getInt("timeout", DEFAULT_TIMEOUT));
-            connectTimeout = cfg.getInt("connect-timeout", timeout);
-        } catch (SocketException e) {
-            throw new ConfigurationException(e);
-        }
+    public void setHosts(String[] hosts, int[] ports) {
+        if (hosts == null || ports == null || hosts.length == 0 || hosts.length != ports.length)
+            throw new IllegalArgumentException("hosts and ports must be non-empty and the same length");
+        this.host = hosts[0];
+        this.port = ports[0];
+        this.hosts = hosts.clone();
+        this.ports = ports.clone();
     }
 
-    public Configuration getConfiguration() {
-        return cfg;
+    /**
+     * @param keepAlive enable TCP SO_KEEPALIVE (default false); applied now if connected,
+     *                  otherwise on the next connect
+     * @throws SocketException if the open socket rejects the option
+     */
+    public void setKeepAlive(boolean keepAlive) throws SocketException {
+        this.keepAlive = keepAlive;
+        applyTimeout();
+    }
+
+    public boolean isKeepAlive() {
+        return keepAlive;
+    }
+
+    /**
+     * @param expectKeepAlive when true, {@link #receive()} skips zero-length frames from the
+     *                        host as keep-alives (default false)
+     */
+    public void setExpectKeepAlive(boolean expectKeepAlive) {
+        this.expectKeepAlive = expectKeepAlive;
+    }
+
+    public boolean isExpectKeepAlive() {
+        return expectKeepAlive;
+    }
+
+    /**
+     * @param connectTimeout TCP connect timeout in milliseconds; 0 = OS default. Not used when a
+     *                       socket factory is set (the factory opens the socket).
+     */
+    public void setConnectTimeout(int connectTimeout) {
+        this.connectTimeout = connectTimeout;
+    }
+
+    public int getConnectTimeout() {
+        return connectTimeout;
     }
 
     public Collection<iBaseFilter> getIncomingFilters() {
@@ -1113,15 +1086,6 @@ public abstract class BaseConnector extends Observable
 
     public boolean isOverrideHeader() {
         return overrideHeader;
-    }
-
-    /**
-     * @param name the Channel's name (without the "channel." prefix)
-     * @return connector registered with the given name, or null
-     */
-    public static iConnector getChannel(String name)
-    {
-        return channelMap.get("channel." + name);
     }
 
     /**

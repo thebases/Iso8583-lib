@@ -62,14 +62,17 @@ Release smoke checks, run with **only** the jar on the classpath:
 | Removed | Replacement |
 |---|---|
 | `GenericJSONPackager.loadFromJsonFile(String path)` | Read the file or asset yourself, then call `setFieldsFromJson(content)` |
-| `new SimpleConfiguration(String filename)`, `SimpleConfiguration.load(String)` | Load `Properties` yourself, then `new SimpleConfiguration(props)` |
-| `GenericSSLSocketFactory` / `SunJSSESocketFactory`: `setKeyStore(String path)`, `setPassword`, `setKeyPassword`, `getKeyStore()`, and the config keys `keystore`, `storepassword`, `keypassword` | `setKeyStore(KeyStore, char[])`, `setTrustStore(KeyStore)` or `setSSLContext(SSLContext)` |
+| Package `com.base.iso.config` (`Configuration`, `SimpleConfiguration`, `Configurable`, `ConfigurationException`) and every `setConfiguration(...)` | Setters: `setHost`/`setHosts`, `setTimeout`, `setConnectTimeout`, `setKeepAlive`, `setExpectKeepAlive`, `setMaxPacketLength`, `setOverrideHeader`, `setLocalAddress`, `setTpduSwap` (NCC/NAC); TLS: `setServerName`, `setClientAuthNeeded`, `setEnabledCipherSuites`, `setInsecureTrustAll`; validators: `setMinLength`, `setMaxLength`, `setBreakOnError` |
+| `BaseConnector.setName`, `BaseConnector.getChannel`, `BaseConnector.unregister`, `iConnector.setName` | Keep your own reference to the connector |
+| `Logger.getLogger(name)`, `Logger.setName`, `Logger.getName`, `Logger.destroy`, `Log.getLog(name, realm)` | `new Logger()` and keep the reference; `removeAllListeners()` to detach |
+| `iDestroyable`, `DefaultTimer` | None (unused) |
+| `GenericSSLSocketFactory` / `SunJSSESocketFactory`: `setKeyStore(String path)`, `setPassword`, `setKeyPassword`, `getKeyStore()` | `setKeyStore(KeyStore, char[])`, `setTrustStore(KeyStore)` or `setSSLContext(SSLContext)` |
 | Bundled resource `com/base/packager/iso87binary.json` | `ISO87BPackager`, or your own JSON string |
 | Jackson on the classpath | Nothing: JSON and XML are handled internally (`Json`, `Xml`) |
 
 ### Behaviour changes
 
-- **TLS validates by default.** In 1.x the default trusted any certificate. Hosts with a self-signed or private-CA certificate need `setTrustStore(...)`. `setServerAuthNeeded(...)` is deprecated and ignored. Trust-all needs `insecure-trust-all=true`.
+- **TLS validates by default.** In 1.x the default trusted any certificate. Hosts with a self-signed or private-CA certificate need `setTrustStore(...)`. `setServerAuthNeeded(...)` is deprecated and ignored. Trust-all needs `setInsecureTrustAll(true)`.
 - **TLS checks the host name** against the certificate SANs. If you connect by IP to a host whose certificate names a DNS host, call `setServerName("dns.name")`.
 - **`setFieldsFromJson` throws** `IllegalArgumentException` on an invalid layout or unknown class, and keeps the previous layout. In 1.x it printed a stack trace and continued.
 - **Non-hex values for binary fields throw** `BaseException` in `ISOMsg.set(int, String)`.

@@ -1,9 +1,6 @@
 
 package com.base.iso.core.validator;
 
-import com.base.iso.config.Configurable;
-import com.base.iso.config.Configuration;
-import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.BaseComponent;
 import com.base.iso.core.BaseException;
 import com.base.iso.core.ISOField;
@@ -13,7 +10,7 @@ import com.base.iso.core.error.ISOVError;
 /**
  * Validator for ISOField components.
  */
-public class ISOFieldValidator implements Configurable, ISOValidator {
+public class ISOFieldValidator implements ISOValidator {
 
     public ISOFieldValidator( ) {
         description = "";
@@ -57,19 +54,6 @@ public class ISOFieldValidator implements Configurable, ISOValidator {
     public ISOFieldValidator( boolean breakOnError ) {
         this();
         this.breakOnError = breakOnError;
-    }
-
-    /**
-     * Default config params are: min-len Minimun length,
-     * max-len Max length, break-on-error break condition.
-     * @param cfg configuration instance
-     * @throws ConfigurationException
-     */
-    public void setConfiguration(Configuration cfg) throws ConfigurationException {
-        this.cfg = cfg;
-        this.minLen =  cfg.getInt( "min-len", 0 );
-        this.maxLen = cfg.getInt( "max-len", 999999 );
-        this.breakOnError = cfg.getBoolean( "break-on-error", false );
     }
 
     public void setMaxLength( int maxLen ){
@@ -159,5 +143,4 @@ public class ISOFieldValidator implements Configurable, ISOValidator {
     protected int minLen = 0, maxLen = 999999;
     /** Flag used to indicate if validat process break on first error or keep an error vector **/
     protected boolean breakOnError = false;
-    protected Configuration cfg;
 }

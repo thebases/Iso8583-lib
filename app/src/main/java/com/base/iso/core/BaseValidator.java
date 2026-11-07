@@ -2,9 +2,6 @@ package com.base.iso.core;
 
 
 
-import com.base.iso.config.Configurable;
-import com.base.iso.config.Configuration;
-import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.validator.ISOValidator;
 import com.base.iso.interfaces.log.iLogSource;
 import com.base.iso.util.log.Logger;
@@ -12,7 +9,7 @@ import com.base.iso.util.log.Logger;
 /**
  * Base Validator class for composed ISOComponents (ISOMsg). 
  */
-public class BaseValidator implements ISOValidator, iLogSource, Configurable {
+public class BaseValidator implements ISOValidator, iLogSource {
 
     public BaseValidator() {
         super();
@@ -24,10 +21,6 @@ public class BaseValidator implements ISOValidator, iLogSource, Configurable {
      */
     public BaseValidator( boolean breakOnError ) {
         this.breakOnError = breakOnError;
-    }
-
-    public void setConfiguration(Configuration cfg) throws ConfigurationException {
-        this.cfg = cfg;
     }
 
     public boolean breakOnError(){
@@ -68,6 +61,5 @@ public class BaseValidator implements ISOValidator, iLogSource, Configurable {
     /** Flag used to indicate if validat process break
      * on first error or keep an error set **/
     protected boolean breakOnError = false;
-    protected Configuration cfg;
    
 }

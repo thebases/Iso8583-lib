@@ -2,9 +2,6 @@ package com.base.iso.util.ssl;
 
 import javax.net.ssl.*;
 
-import com.base.iso.config.Configurable;
-import com.base.iso.config.Configuration;
-import com.base.iso.config.ConfigurationException;
 import com.base.iso.core.BaseException;
 import com.base.iso.interfaces.iClientSocketFactory;
 import com.base.iso.util.log.SimpleLogSource;
@@ -29,21 +26,20 @@ import java.security.cert.X509Certificate;
  *       (SAN-aware; Android API 24+, JDK 7+). {@link #setServerName(String)} overrides the name
  *       checked, e.g. when connecting by IP to a host whose certificate names a DNS host.</li>
  *   <li>Context is {@code TLS} with the default {@link SecureRandom}.</li>
- *   <li>Trust-all exists only as an explicit opt-in ({@link #setInsecureTrustAll(boolean)} or
- *       config {@code insecure-trust-all=true}) and logs a warning — test labs only.</li>
+ *   <li>Trust-all exists only as an explicit opt-in ({@link #setInsecureTrustAll(boolean)})
+ *       and logs a warning — test labs only.</li>
  * </ul>
  * Key material is injected, never read from a path: the consumer loads its {@link KeyStore}
  * (Android KeyStore / BKS / PKCS12 asset, service secret store) and calls
  * {@link #setKeyStore(KeyStore, char[])} / {@link #setTrustStore(KeyStore)}, or supplies a
  * complete {@link SSLContext} via {@link #setSSLContext(SSLContext)}.
  *
- * Configuration keys: {@code clientauth}, {@code servername}, {@code insecure-trust-all},
- * {@code addEnabledCipherSuite} (multi). Removed in 2.0.0: {@code keystore},
- * {@code storepassword}, {@code keypassword}, {@code serverauth}.
+ * Set up with setters only: {@link #setServerName}, {@link #setClientAuthNeeded},
+ * {@link #setEnabledCipherSuites}, {@link #setInsecureTrustAll}.
  */
 public class GenericSSLSocketFactory
         extends SimpleLogSource
-        implements ISOServerSocketFactory, iClientSocketFactory, Configurable
+        implements ISOServerSocketFactory, iClientSocketFactory
 {
     private SSLContext sslc = null;
     private SSLServerSocketFactory serverFactory = null;
@@ -56,8 +52,6 @@ public class GenericSSLSocketFactory
     private boolean clientAuthNeeded = false;
     private boolean insecureTrustAll = false;
     private String[] enabledCipherSuites;
-
-    private Configuration cfg;
 
     /**
      * Client/server key material (needed for mutual TLS or a TLS server).
@@ -266,18 +260,4 @@ public class GenericSSLSocketFactory
         return enabledCipherSuites;
     }
 
-    public void setConfiguration(Configuration cfg) throws ConfigurationException {
-        this.cfg = cfg;
-        clientAuthNeeded = cfg.getBoolean("clientauth");
-        serverName = cfg.get("servername", null);
-        enabledCipherSuites = cfg.getAll("addEnabledCipherSuite");
-        setInsecureTrustAll(cfg.getBoolean("insecure-trust-all"));
-        if (cfg.get("keystore", null) != null)
-            throw new ConfigurationException(
-                "'keystore' path is no longer supported: load the KeyStore yourself and call setKeyStore(KeyStore, char[])");
-    }
-
-    public Configuration getConfiguration() {
-        return cfg;
-    }
 }
