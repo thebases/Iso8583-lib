@@ -32,6 +32,20 @@ public abstract class aBasePackager implements iPackager, iLogSource {
     protected Logger logger = null;
     protected String realm = null;
     protected int headerLength = 0;
+    /**
+     * When false (default) pack/unpack log events carry only field numbers and lengths, never
+     * field values or raw images (card data). Turn on only for local debugging with test cards.
+     */
+    protected volatile boolean logFieldValues = false;
+
+    /** @param on true to include field values / raw hex in log events (debug only — leaks card data) */
+    public void setLogFieldValues (boolean on) {
+        this.logFieldValues = on;
+    }
+
+    public boolean isLogFieldValues () {
+        return logFieldValues;
+    }
     
     public void setFieldPackager (aISOFieldBase[] fld) {
         this.fld = fld;
@@ -113,7 +127,8 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                     } catch (BaseException e) {
                         if (evt != null) {
                             evt.addMessage ("error packing field "+i);
-                            evt.addMessage (c);
+                            if (logFieldValues)
+                                evt.addMessage (c);
                             evt.addMessage (e);
                         }
                         throw new BaseException("error packing field "+i, e);
@@ -133,7 +148,8 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                         } catch (BaseException e) {
                             if (evt != null) {
                                 evt.addMessage ("error packing field "+(i+128));
-                                evt.addMessage (c);
+                                if (logFieldValues)
+                                    evt.addMessage (c);
                                 evt.addMessage (e);
                             }
                             throw e;
@@ -158,8 +174,8 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                 System.arraycopy(bb, 0, d, k, bb.length);
                 k += bb.length;
             }
-            if (evt != null)  // save a few CPU cycle if no logger available
-                evt.addMessage (ISOUtil.hexString (d));
+            if (evt != null)  // packed image holds card data → only in explicit debug mode
+                evt.addMessage (logFieldValues ? ISOUtil.hexString (d) : "[" + d.length + " bytes]");
             return d;
         } catch (BaseException e) {
             if (evt != null)
@@ -178,14 +194,15 @@ public abstract class aBasePackager implements iPackager, iLogSource {
      * @exception BaseException
      */
     public int unpack (BaseComponent m, byte[] b) throws BaseException {
-        LogEvent evt = new LogEvent (this, "unpack");
+        // T13: no LogEvent allocation (or Logger.log call) when no logger is attached.
+        LogEvent evt = logger != null ? new LogEvent (this, "unpack") : null;
         int consumed = 0;
 
         try {
-            if (m.getComposite() != m) 
+            if (m.getComposite() != m)
                 throw new BaseException ("Can't call packager on non Composite");
-            if (logger != null)  // save a few CPU cycle if no logger available
-                evt.addMessage (ISOUtil.hexString (b));
+            if (evt != null)  // raw image may hold PAN/track/PIN block → only in explicit debug mode
+                evt.addMessage (logFieldValues ? ISOUtil.hexString (b) : "[" + b.length + " bytes]");
 
             
             // if ISOMsg and headerLength defined 
@@ -209,7 +226,7 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                 BitMapComponent bitmap = new BitMapComponent (-1);
                 consumed += getBitMapfieldPackager().unpack(bitmap,b,consumed);
                 bmap = (BitSet) bitmap.getValue();
-                if (logger != null)
+                if (evt != null)
                     evt.addMessage ("<bitmap>"+bmap.toString()+"</bitmap>");
                 m.set (bitmap);
                 maxField = Math.min(maxField, bmap.size());
@@ -226,54 +243,77 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                             throw new BaseException ("field packager '" + i + "' is null");
 
                         BaseComponent c = fld[i].createComponent(i);
+                        int start = consumed;
                         consumed += fld[i].unpack (c, b, consumed);
-                        if (logger != null) {
-                            evt.addMessage ("<unpack fld=\"" + i 
-                                +"\" packager=\""
-                                +fld[i].getClass().getName()+ "\">");
-                            if (c.getValue() instanceof ISOMsg)
-                                evt.addMessage (c.getValue());
-                            else if (c.getValue() instanceof byte[]) {
-                                evt.addMessage ("  <value type='binary'>" 
-                                    +ISOUtil.hexString((byte[]) c.getValue())
-                                    + "</value>");
-                            }
-                            else {
-                                evt.addMessage ("  <value>" 
-                                    +c.getValue()
-                                    + "</value>");
-                            }
-                            evt.addMessage ("</unpack>");
-                        }
+                        if (evt != null)
+                            logUnpackedField (evt, i, c, consumed - start);
                         m.set(c);
                     }
                 } catch (BaseException e) {
-                    evt.addMessage (
-                        "error unpacking field " + i + " consumed=" + consumed
-                    );
-                    evt.addMessage (e);
-                    e = new BaseException (
+                    if (evt != null) {
+                        evt.addMessage (
+                            "error unpacking field " + i + " consumed=" + consumed
+                        );
+                        evt.addMessage (e);
+                    }
+                    // T5: many errors carry no nested cause; keep field number, reason and cause.
+                    Throwable nested = e.getNested();
+                    throw new BaseException (
                         String.format ("%s (%s) unpacking field=%d, consumed=%d",
-                        e.getMessage(), e.getNested().toString(), i, consumed)
+                        e.getMessage(), nested != null ? nested.toString() : "-", i, consumed),
+                        e
                     );
-                    throw e;
                 }
             }
-            if (b.length != consumed) {
+            if (evt != null && b.length != consumed) {
                 evt.addMessage (
                     "WARNING: unpack len=" +b.length +" consumed=" +consumed
                 );
             }
             return consumed;
         } catch (BaseException e) {
-            evt.addMessage (e);
+            if (evt != null)
+                evt.addMessage (e);
             throw e;
         } catch (Exception e) {
-            evt.addMessage (e);
-            throw new BaseException (e.getMessage() + " consumed=" + consumed);
+            if (evt != null)
+                evt.addMessage (e);
+            throw new BaseException (e.getMessage() + " consumed=" + consumed, e);
         } finally {
-            Logger.log (evt);
+            if (evt != null)
+                Logger.log (evt);
         }
+    }
+
+    /**
+     * Adds one unpacked field to the log event. Values (PAN, track 2, PIN block, ICC data...)
+     * are written only when {@link #setLogFieldValues(boolean)} is on; otherwise only the field
+     * number, codec and length are logged (T12, PCI DSS req. 3).
+     */
+    private void logUnpackedField (LogEvent evt, int i, BaseComponent c, int packedLen)
+        throws BaseException
+    {
+        if (!logFieldValues) {
+            evt.addMessage ("<unpack fld=\"" + i + "\" packager=\""
+                + fld[i].getClass().getName() + "\" len=\"" + packedLen + "\"/>");
+            return;
+        }
+        evt.addMessage ("<unpack fld=\"" + i
+            +"\" packager=\""
+            +fld[i].getClass().getName()+ "\">");
+        if (c.getValue() instanceof ISOMsg)
+            evt.addMessage (c.getValue());
+        else if (c.getValue() instanceof byte[]) {
+            evt.addMessage ("  <value type='binary'>"
+                +ISOUtil.hexString((byte[]) c.getValue())
+                + "</value>");
+        }
+        else {
+            evt.addMessage ("  <value>"
+                +c.getValue()
+                + "</value>");
+        }
+        evt.addMessage ("</unpack>");
     }
     public void unpack (BaseComponent m, InputStream in) 
         throws IOException, BaseException 
@@ -327,7 +367,7 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                             +fld[i].getClass().getName()+ "\">");
                         if (c.getValue() instanceof ISOMsg)
                             evt.addMessage (c.getValue());
-                        else
+                        else if (logFieldValues)
                             evt.addMessage ("  <value>" 
                                 +c.getValue().toString()
                                 + "</value>");
@@ -348,9 +388,10 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                             evt.addMessage ("<unpack fld=\"" + i+128
                                 +"\" packager=\""
                                 +fld[i+128].getClass().getName()+ "\">");
-                            evt.addMessage ("  <value>" 
-                                +c.getValue().toString()
-                                + "</value>");
+                            if (logFieldValues)
+                                evt.addMessage ("  <value>" 
+                                    +c.getValue().toString()
+                                    + "</value>");
                             evt.addMessage ("</unpack>");
                         }
                         m.set(c);

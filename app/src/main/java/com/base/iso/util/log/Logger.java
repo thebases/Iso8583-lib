@@ -26,7 +26,7 @@ public class Logger implements iLogProducer {
     
     String name;
     Vector listeners;
-    static boolean versionShown = false;
+    static volatile boolean versionShown = false;
     private static final ConcurrentHashMap<String, Logger> loggers = new ConcurrentHashMap<>();
 
     public Logger () {

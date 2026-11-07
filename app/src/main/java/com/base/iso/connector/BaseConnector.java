@@ -30,7 +30,7 @@ import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Observable;
@@ -89,7 +89,8 @@ public abstract class BaseConnector extends Observable
     protected ServerSocket serverSocket = null;
     protected List<iBaseFilter> incomingFilters, outgoingFilters;
     protected iClientSocketFactory socketFactory = null;
-    private static final Map<String, iConnector> channelMap = new HashMap<>();
+    /** Name registry for {@link #getChannel(String)}; concurrent because services name connectors from many threads (T18). */
+    private static final Map<String, iConnector> channelMap = new ConcurrentHashMap<>();
 
     protected int[] cnt;
 
@@ -421,8 +422,10 @@ public abstract class BaseConnector extends Observable
             applyTimeout();
             Logger.log(evt);
         } catch (ConnectException e) {
+            // T8: log AND rethrow — swallowing it let callers believe they were connected.
             Logger.log(new LogEvent(this, "connection-refused",
                     getHost() + ":" + getPort()));
+            throw e;
         } catch (IOException e) {
             evt.addMessage(e.getMessage());
             Logger.log(evt);
@@ -784,8 +787,9 @@ public abstract class BaseConnector extends Observable
                 evt.addMessage(ISOUtil.hexdump(header));
             }
             if (b != null) {
+                // T12: the raw frame holds PAN / track 2 / PIN block — log its size only.
                 evt.addMessage("--- data ---");
-                evt.addMessage(ISOUtil.hexdump(b));
+                evt.addMessage("[" + b.length + " bytes]");
             }
             throw e;
         } catch (EOFException e) {
@@ -907,8 +911,16 @@ public abstract class BaseConnector extends Observable
      * @see NameRegistrar
      */
     public void setName(String name) {
+        // drop the previous registration so renamed connectors don't stay reachable/leak (T18)
+        if (this.name != null && this.name.length() > 0)
+            channelMap.remove("channel." + this.name, this);
         this.name = name;
         channelMap.put("channel." + name, this);
+    }
+
+    /** Removes this connector from the {@link #getChannel(String)} registry (call when retiring it). */
+    public void unregister() {
+        channelMap.remove("channel." + name, this);
     }
 
     /**

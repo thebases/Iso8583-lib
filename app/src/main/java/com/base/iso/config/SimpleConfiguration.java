@@ -1,10 +1,12 @@
 package com.base.iso.config;
 
-import java.io.BufferedInputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
 import java.util.*;
 
+/**
+ * {@link Configuration} backed by {@link Properties}.
+ * The library does not read files: the consumer loads its own properties (asset, config
+ * service, ...) and passes them to {@link #SimpleConfiguration(Properties)} or uses {@link #put}.
+ */
 public class SimpleConfiguration implements Configuration {
     private Properties props;
 
@@ -13,12 +15,6 @@ public class SimpleConfiguration implements Configuration {
     }
     public SimpleConfiguration (Properties props) {
         this.props = props;
-    }
-    public SimpleConfiguration (String filename)
-        throws IOException
-    {
-        props = new Properties();
-        load (filename);
     }
     public String get (String name, String def) {
         Object obj = props.get (name);
@@ -102,13 +98,6 @@ public class SimpleConfiguration implements Configuration {
         String v = get (name);
         return v.length() == 0 ? def :
             (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("yes"));
-    }
-    public void load(String filename) 
-        throws IOException
-    {
-        FileInputStream fis = new FileInputStream(filename);
-        props.load(new BufferedInputStream(fis));
-        fis.close();
     }
     public synchronized void put (String name, Object value) {
         props.put (name, value);

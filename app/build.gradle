@@ -1,43 +1,123 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
+    // T17: fails the build on JDK APIs missing from Android API 24 (java.nio.file, java.time, ...)
+    alias(libs.plugins.animalsniffer)
 }
 
 group = 'com.base.iso'
-version = '1.0.0'
+version = '2.0.0'
+
+// All archives are named iso8583-<version>[-classifier].jar (T4).
+base {
+    archivesName = 'iso8583'
+}
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    // Jackson for JSON and XML processing
-    implementation 'com.fasterxml.jackson.core:jackson-core:2.17.1'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.1'
-    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.1'
-    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.17.1'
+    // No runtime dependencies: the jar must run with JDK / Android framework classes only (T21).
+    // Any future dependency needs a written justification and must be shaded + relocated under
+    // com.base.iso.shaded.* — see .agents/planning/2026-11-07-code-and-deps-enhancement.md (T21).
 
-    // Berkeley DB Java Edition
-    implementation 'com.sleepycat:je:18.3.12'
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.platform.launcher
 
-    // JDBM and YAML (assumes these are defined in version catalog or elsewhere)
-    implementation "jdbm:jdbm:1.0"
-    implementation 'org.yaml:snakeyaml:2.0'
-
-    // Bouncy Castle
-    implementation( 'org.bouncycastle:bcprov-jdk15on:1.50')
-    implementation( 'org.bouncycastle:bcpg-jdk15on:1.50')
-
-    // JUnit 5 for testing
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
+    // Android API 24 signature for the animal-sniffer check (build-time only, never shipped).
+    signature("${libs.android.api24.signature.get()}@signature")
 }
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(11)
     }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // Class file major 55 (Java 11) for JVM 11+ services and Android D8.
+    options.release = 11
+    options.encoding = 'UTF-8'
+}
+
+animalsniffer {
+    // Only production code must be Android-24 safe; tests run on the JVM.
+    sourceSets = [sourceSets.main]
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'iso8583',
+            'Implementation-Version': project.version,
+            'Automatic-Module-Name': 'com.base.iso'
+        )
+    }
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------------------------------------
+// T21 — self-contained jar guarantee.
+// ---------------------------------------------------------------------------------------------
+
+// Fails if the runtime classpath resolves to ANY artifact: consumers copy only iso8583-<ver>.jar.
+def verifySelfContained = tasks.register('verifySelfContained') {
+    group = 'verification'
+    description = 'Fails if the library has any runtime dependency (the jar must be self-contained).'
+    def runtime = configurations.runtimeClasspath
+    inputs.files(runtime)
+    doLast {
+        def deps = runtime.resolvedConfiguration.resolvedArtifacts.collect { it.moduleVersion.id.toString() }
+        if (!deps.isEmpty()) {
+            throw new GradleException("iso8583 must have zero runtime dependencies, found: ${deps}. " +
+                "Remove them, or shade + relocate under com.base.iso.shaded.* (plan T21).")
+        }
+    }
+}
+
+// jdeps: the jar may only need JDK modules that Android also provides.
+def jdepsCheck = tasks.register('jdepsCheck') {
+    group = 'verification'
+    description = 'Runs jdeps on the jar; only java.base / java.sql / java.xml are allowed.'
+    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+    def jdk = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(11) }
+    inputs.file(jarFile)
+    def gradleJdk = System.getProperty('java.home')
+    doLast {
+        // Prefer the Java 11 toolchain's jdeps; some JDK builds omit it, so fall back to the JDK
+        // running Gradle (jdeps of any JDK >= 11 can analyse a --release 11 jar).
+        def homes = [jdk.get().metadata.installationPath.asFile, new File(gradleJdk)]
+        def exe = homes.collectMany { [new File(it, 'bin/jdeps'), new File(it, 'bin/jdeps.exe')] }.find { it.isFile() }
+        if (exe == null)
+            throw new GradleException("jdeps not found in ${homes}")
+        def result = providers.exec {
+            commandLine exe.absolutePath, '--multi-release', '11', '--print-module-deps', jarFile.get().asFile.absolutePath
+        }
+        def modules = result.standardOutput.asText.get().trim().split(',').collect { it.trim() }.findAll { it }
+        def allowed = ['java.base', 'java.sql', 'java.xml']
+        def extra = modules - allowed
+        if (!extra.isEmpty()) {
+            throw new GradleException("jar needs modules outside ${allowed}: ${extra}")
+        }
+        logger.lifecycle("jdeps module deps: ${modules.join(',')}")
+    }
+}
+
+tasks.named('check') {
+    dependsOn verifySelfContained, jdepsCheck
+}
+
+// Optional internal-repo publishing (T4 / D1). The POM lists no runtime dependencies.
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = 'iso8583'
+            from components.java
+        }
+    }
 }

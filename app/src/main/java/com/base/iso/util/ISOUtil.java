@@ -1,6 +1,7 @@
 package com.base.iso.util;
 
 import java.math.BigDecimal;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.*;
@@ -753,11 +754,18 @@ public class ISOUtil {
         return d;
     }
     /**
-     * Converts a hex string into a byte array
+     * Converts a hex string into a byte array.
+     * Odd length is left-padded with '0' ("ABC" → 0x0A 0xBC).
      * @param s source string (with Hex representation)
      * @return byte array
+     * @throws IllegalArgumentException if {@code s} contains a non-hex character (T6: previously
+     *         produced silently corrupted bytes, e.g. a bad F52 PIN block on the wire)
      */
     public static byte[] hex2byte (String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.digit(s.charAt(i), 16) < 0)
+                throw new IllegalArgumentException("invalid hex character at index " + i);
+        }
         if (s.length() % 2 == 0) {
             return hex2byte (s.getBytes(), 0, s.length() >> 1);
         } else {
@@ -837,7 +845,9 @@ public class ISOUtil {
         for (int i = 0; i < bytes.length; i++) {
             byteBuffer.put(bytes[i]);
         }
-        byteBuffer.position(0);
+        // Cast to Buffer: compiled with --release 11, ByteBuffer.position(int) binds to the
+        // Java 9+ covariant override that Android API 24 lacks (NoSuchMethodError on device).
+        ((Buffer) byteBuffer).position(0);
         return byteBuffer.getInt();
     }
 

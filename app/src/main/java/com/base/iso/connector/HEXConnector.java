@@ -73,7 +73,13 @@ public class HEXConnector extends BaseConnector {
     protected int getMessageLength() throws IOException, BaseException {
         byte[] b = new byte[4];
         serverIn.readFully(b,0,4);
-        return Integer.parseInt (new String(b),16);
+        try {
+            return Integer.parseInt (new String(b),16);
+        } catch (NumberFormatException e) {
+            // T9: stream position is now unknown → drop the connection instead of desyncing
+            closeSocket();
+            throw new BaseException ("invalid length prefix: " + ISOUtil.hexString (b), e);
+        }
     }
 }
 

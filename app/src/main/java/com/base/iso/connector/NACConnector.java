@@ -80,7 +80,9 @@ public class NACConnector extends BaseConnector {
         byte[] h = m.getHeader();
         if (h != null) {
             if (tpduSwap && h.length == 5) {
-                // swap src/dest address
+                // swap src/dest address on a COPY (T7): swapping m's header in place made a
+                // re-send of the same ISOMsg (retry, reversal) go out with the unswapped TPDU.
+                h = h.clone();
                 byte[] tmp = new byte[2];
                 System.arraycopy (h,   1, tmp, 0, 2);
                 System.arraycopy (h,   3,   h, 1, 2);

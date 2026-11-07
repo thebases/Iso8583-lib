@@ -213,7 +213,14 @@ public class ISOMsg extends BaseComponent
                 // This ISOMsg has a packager, so use it
                 Object obj = ((aBasePackager) packager).getFieldPackager(fldno);
                 if (obj instanceof BinaryFieldBase) {
-                    set(new BinaryFieldComponent(fldno, ISOUtil.hex2byte(value)));
+                    byte[] bin;
+                    try {
+                        bin = ISOUtil.hex2byte(value);
+                    } catch (IllegalArgumentException e) {
+                        // value deliberately not echoed: binary fields carry PIN blocks / keys
+                        throw new BaseException("invalid hex for field " + fldno + ": " + e.getMessage(), e);
+                    }
+                    set(new BinaryFieldComponent(fldno, bin));
                 } else {
                     set(new ISOField(fldno, value));
                 }
@@ -934,9 +941,13 @@ public class ISOMsg extends BaseComponent
         byte[] b = new byte[in.readShort()];
         in.readFully(b);
         try {
-            Class mypClass = Class.forName(new String(b));
-            iPackager myp = (iPackager) mypClass.newInstance();
-            setPackager(myp);
+            // T18: resolve without static init and verify the type BEFORE instantiating, so a
+            // crafted stream cannot construct arbitrary classes (deserialization gadget).
+            Class<?> mypClass = Class.forName(new String(b), false, ISOMsg.class.getClassLoader());
+            if (iPackager.class.isAssignableFrom(mypClass))
+                setPackager((iPackager) mypClass.getDeclaredConstructor().newInstance());
+            else
+                setPackager(null);
         } catch (Exception e) {
             setPackager(null);
         }

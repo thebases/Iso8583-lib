@@ -1,6 +1,6 @@
-package com.base.iso.util.ssl; 
+package com.base.iso.util.ssl;
+
 import javax.net.ssl.*;
-import javax.security.cert.X509Certificate;
 
 import com.base.iso.config.Configurable;
 import com.base.iso.config.Configuration;
@@ -9,284 +9,245 @@ import com.base.iso.core.BaseException;
 import com.base.iso.interfaces.iClientSocketFactory;
 import com.base.iso.util.log.SimpleLogSource;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 
 /**
- * <code>SunJSSESocketFactory</code> is used by BaseChannel and ISOServer
- * in order to provide hooks for SSL implementations.  
+ * TLS socket factory for connectors ({@code BaseConnector.setSocketFactory}) and servers.
+ *
+ * Secure by default (plan T11):
+ * <ul>
+ *   <li>Server certificates are validated against the injected trust store, or the platform
+ *       trust store when none is set (Android system CAs / JVM cacerts).</li>
+ *   <li>Host name is verified with {@code SSLParameters.setEndpointIdentificationAlgorithm("HTTPS")}
+ *       (SAN-aware; Android API 24+, JDK 7+). {@link #setServerName(String)} overrides the name
+ *       checked, e.g. when connecting by IP to a host whose certificate names a DNS host.</li>
+ *   <li>Context is {@code TLS} with the default {@link SecureRandom}.</li>
+ *   <li>Trust-all exists only as an explicit opt-in ({@link #setInsecureTrustAll(boolean)} or
+ *       config {@code insecure-trust-all=true}) and logs a warning — test labs only.</li>
+ * </ul>
+ * Key material is injected, never read from a path: the consumer loads its {@link KeyStore}
+ * (Android KeyStore / BKS / PKCS12 asset, service secret store) and calls
+ * {@link #setKeyStore(KeyStore, char[])} / {@link #setTrustStore(KeyStore)}, or supplies a
+ * complete {@link SSLContext} via {@link #setSSLContext(SSLContext)}.
+ *
+ * Configuration keys: {@code clientauth}, {@code servername}, {@code insecure-trust-all},
+ * {@code addEnabledCipherSuite} (multi). Removed in 2.0.0: {@code keystore},
+ * {@code storepassword}, {@code keypassword}, {@code serverauth}.
  */
-public class GenericSSLSocketFactory 
-        extends SimpleLogSource 
-        implements ISOServerSocketFactory,iClientSocketFactory, Configurable
-{ 
+public class GenericSSLSocketFactory
+        extends SimpleLogSource
+        implements ISOServerSocketFactory, iClientSocketFactory, Configurable
+{
+    private SSLContext sslc = null;
+    private SSLServerSocketFactory serverFactory = null;
+    private SSLSocketFactory socketFactory = null;
 
-    private SSLContext sslc=null;
-    private SSLServerSocketFactory  serverFactory=null;
-    private SSLSocketFactory socketFactory=null;
-
-    private String keyStore=null;
-    private String password=null;
-    private String keyPassword=null;
+    private KeyStore keyStore = null;
+    private char[] keyPassword = null;
+    private KeyStore trustStore = null;
     private String serverName;
-    private boolean clientAuthNeeded=false;
-    private boolean serverAuthNeeded=false;
+    private boolean clientAuthNeeded = false;
+    private boolean insecureTrustAll = false;
     private String[] enabledCipherSuites;
 
     private Configuration cfg;
 
-    public void setKeyStore(String keyStore){
-        this.keyStore=keyStore;  
+    /**
+     * Client/server key material (needed for mutual TLS or a TLS server).
+     * @param ks          a loaded key store
+     * @param keyPassword password of the private key entry
+     */
+    public synchronized void setKeyStore(KeyStore ks, char[] keyPassword) {
+        this.keyStore = ks;
+        this.keyPassword = keyPassword == null ? null : keyPassword.clone();
+        resetContext();
     }
 
-    public void setPassword(String password){
-        this.password=password;  
+    /** Trust anchors used to validate the peer; {@code null} = platform default trust store. */
+    public synchronized void setTrustStore(KeyStore ts) {
+        this.trustStore = ts;
+        resetContext();
     }
 
-    public void setKeyPassword(String keyPassword){
-        this.keyPassword=keyPassword;  
+    /** Uses a fully configured context as-is (key store / trust store settings are then ignored). */
+    public synchronized void setSSLContext(SSLContext context) {
+        resetContext();
+        this.sslc = context;
     }
 
-    public void setServerName(String serverName){
-        this.serverName=serverName;  
+    /** Host name the server certificate must match; defaults to the host passed to createSocket. */
+    public void setServerName(String serverName) {
+        this.serverName = serverName;
     }
 
-    public void setClientAuthNeeded(boolean clientAuthNeeded){
-        this.clientAuthNeeded=clientAuthNeeded;  
+    public void setClientAuthNeeded(boolean clientAuthNeeded) {
+        this.clientAuthNeeded = clientAuthNeeded;
     }
 
-    public void setServerAuthNeeded(boolean serverAuthNeeded){
-        this.serverAuthNeeded=serverAuthNeeded;  
+    /**
+     * DANGEROUS: accept any server certificate and skip host name verification.
+     * Allows a man-in-the-middle to read card data. Never enable in production.
+     */
+    public synchronized void setInsecureTrustAll(boolean insecureTrustAll) {
+        this.insecureTrustAll = insecureTrustAll;
+        resetContext();
     }
 
-    private TrustManager[] getTrustManagers(KeyStore ks)
-        throws GeneralSecurityException {
-        if (serverAuthNeeded) {
-            TrustManagerFactory tm = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            tm.init( ks ); 
-            return tm.getTrustManagers(); 
-        } else {
-            // Create a trust manager that does not validate certificate chains
-            return new TrustManager[]{
+    public boolean isInsecureTrustAll() {
+        return insecureTrustAll;
+    }
+
+    /**
+     * @deprecated server authentication is always on since 2.0.0; use
+     * {@link #setInsecureTrustAll(boolean)} to turn it off (test only). This setter is ignored.
+     */
+    @Deprecated
+    public void setServerAuthNeeded(boolean serverAuthNeeded) {
+        // intentionally ignored — validation can only be disabled via setInsecureTrustAll(true)
+    }
+
+    /** @deprecated see {@link #setServerAuthNeeded(boolean)}; returns {@code !isInsecureTrustAll()}. */
+    @Deprecated
+    public boolean getServerAuthNeeded() {
+        return !insecureTrustAll;
+    }
+
+    private void resetContext() {
+        sslc = null;
+        serverFactory = null;
+        socketFactory = null;
+    }
+
+    private TrustManager[] getTrustManagers() throws GeneralSecurityException {
+        if (insecureTrustAll) {
+            warning("insecure-trust-all is enabled: server certificates are NOT validated");
+            return new TrustManager[] {
                 new X509TrustManager() {
-                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                        return new java.security.cert.X509Certificate[] {};
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
                     }
-                    public void checkClientTrusted(
-                        java.security.cert.X509Certificate[] certs, String authType) {
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {
                     }
-                    public void checkServerTrusted(
-                        java.security.cert.X509Certificate[] certs, String authType) {
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {
                     }
                 }
             };
         }
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore); // null → platform default trust store
+        return tmf.getTrustManagers();
     }
 
-    /**
-     * Create a SSLSocket Context
-     * @return the SSLContext
-     * @returns null if exception occurrs
-     */
-    private SSLContext getSSLContext() throws BaseException {
-        if(password==null)  password=getPassword();
-        if(keyPassword ==null)  keyPassword=getKeyPassword();
-        if(keyStore==null || keyStore.length()==0) {
-            keyStore=System.getProperty("user.home")+File.separator+".keystore";
-        }
-
-        try{
-            KeyStore ks = KeyStore.getInstance( "JKS" );
-            FileInputStream fis = new FileInputStream (new File (keyStore));
-            ks.load(fis,password.toCharArray());
-            fis.close();
-            KeyManagerFactory km = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            km.init( ks, keyPassword.toCharArray() );
-            KeyManager[] kma = km.getKeyManagers();
-            TrustManager[] tma = getTrustManagers( ks );
-            SSLContext sslc = SSLContext.getInstance( "SSL" ); 
-            sslc.init( kma, tma, SecureRandom.getInstance( "SHA1PRNG" ) ); 
+    /** Builds the TLS context from the injected stores (or returns the injected context). */
+    private synchronized SSLContext getSSLContext() throws BaseException {
+        if (sslc != null)
             return sslc;
-        } catch(Exception e) {
-            throw new BaseException (e);
-        } finally { 
-            password=null;
-            keyPassword=null;
+        try {
+            KeyManager[] kma = null;
+            if (keyStore != null) {
+                KeyManagerFactory km = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                km.init(keyStore, keyPassword);
+                kma = km.getKeyManagers();
+            }
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(kma, getTrustManagers(), new SecureRandom());
+            sslc = ctx;
+            return ctx;
+        } catch (GeneralSecurityException e) {
+            throw new BaseException("Failed to initialize SSLContext", e);
         }
     }
 
     /**
      * Create a socket factory
      * @return the socket factory
-     * @exception BaseException if an error occurs during server socket
-     * creation
+     * @exception BaseException if the TLS context cannot be created
      */
-    protected SSLServerSocketFactory createServerSocketFactory() 
+    protected SSLServerSocketFactory createServerSocketFactory()
         throws BaseException
     {
-        if(sslc==null) sslc=getSSLContext();
-        return sslc.getServerSocketFactory();
+        return getSSLContext().getServerSocketFactory();
     }
-        
+
     /**
      * Create a socket factory
      * @return the socket factory
-     * @exception BaseException if an error occurs during server socket
-     * creation
+     * @exception BaseException if the TLS context cannot be created
      */
-    protected SSLSocketFactory createSocketFactory() 
+    protected SSLSocketFactory createSocketFactory()
         throws BaseException
     {
-        if(sslc==null) sslc=getSSLContext();
-        return sslc.getSocketFactory();
+        return getSSLContext().getSocketFactory();
     }
-    
+
     /**
      * Create a server socket on the specified port (port 0 indicates
      * an anonymous port).
      * @param  port the port number
      * @return the server socket on the specified port
-     * @exception IOException should an I/O error occurs during 
-     * @exception BaseException should an error occurs during 
+     * @exception IOException should an I/O error occurs during
+     * @exception BaseException should an error occurs during
      * creation
      */
-    public ServerSocket createServerSocket(int port) 
+    public ServerSocket createServerSocket(int port)
         throws IOException, BaseException
     {
-        if(serverFactory==null) serverFactory=createServerSocketFactory();
-        ServerSocket socket = serverFactory.createServerSocket(port);
-        SSLServerSocket serverSocket = (SSLServerSocket) socket;
+        if (serverFactory == null) serverFactory = createServerSocketFactory();
+        SSLServerSocket serverSocket = (SSLServerSocket) serverFactory.createServerSocket(port);
         serverSocket.setNeedClientAuth(clientAuthNeeded);
         if (enabledCipherSuites != null && enabledCipherSuites.length > 0) {
             serverSocket.setEnabledCipherSuites(enabledCipherSuites);
         }
-        return socket;
+        return serverSocket;
     }
-    
+
     /**
-     * Create a client socket connected to the specified host and port.
+     * Create a client socket connected to the specified host and port, and complete the TLS
+     * handshake (certificate + host name checks fail here, not on the first send).
      * @param  host   the host name
      * @param  port   the port number
      * @return a socket connected to the specified host and port.
-     * @exception IOException if an I/O error occurs during socket creation
+     * @exception IOException if an I/O or TLS verification error occurs
      * @exception BaseException should any other error occurs
      */
-    public Socket createSocket(String host, int port) 
+    public Socket createSocket(String host, int port)
         throws IOException, BaseException
     {
-        if(socketFactory==null) socketFactory=createSocketFactory();
-        SSLSocket s = (SSLSocket) socketFactory.createSocket(host,port);
-        verifyHostname(s);
-        return s;
-    }
+        if (socketFactory == null) socketFactory = createSocketFactory();
+        String peerName = serverName != null && serverName.length() > 0 ? serverName : host;
 
-    /**
-     * Verify that serverName and CN equals.
-     *
-     * <pre>
-     * Origin:      jakarta-commons/httpclient
-     * File:        StrictSSLProtocolSocketFactory.java
-     * Revision:    1.5
-     * License:     Apache-2.0
-     * </pre>
-     *
-     * @param socket a SSLSocket value
-     * @exception SSLPeerUnverifiedException  If there are problems obtaining
-     * the server certificates from the SSL session, or the server host name 
-     * does not match with the "Common Name" in the server certificates 
-     * SubjectDN.
-     * @exception UnknownHostException  If we are not able to resolve
-     * the SSL sessions returned server host name. 
-     */
-    private void verifyHostname(SSLSocket socket)
-        throws SSLPeerUnverifiedException, UnknownHostException
-    {
-        if (!serverAuthNeeded) {
-            return; 
+        // Connect TCP first, then layer TLS with peerName: that name is used for SNI and for
+        // endpoint identification, so a host reached by IP can still be checked by DNS name.
+        Socket plain = new Socket();
+        SSLSocket s;
+        try {
+            plain.connect(new InetSocketAddress(host, port));
+            s = (SSLSocket) socketFactory.createSocket(plain, peerName, port, true);
+        } catch (IOException e) {
+            plain.close();
+            throw e;
         }
-
-        SSLSession session = socket.getSession();
-
-        if (serverName==null || serverName.length()==0) {
-            serverName = session.getPeerHost();
-            try {
-                InetAddress addr = InetAddress.getByName(serverName);
-            } catch (UnknownHostException uhe) {
-                throw new UnknownHostException("Could not resolve SSL " +
-                                               "server name " + serverName);
+        try {
+            if (enabledCipherSuites != null && enabledCipherSuites.length > 0)
+                s.setEnabledCipherSuites(enabledCipherSuites);
+            if (!insecureTrustAll) {
+                SSLParameters params = s.getSSLParameters();
+                params.setEndpointIdentificationAlgorithm("HTTPS");
+                s.setSSLParameters(params);
             }
+            s.startHandshake();
+            return s;
+        } catch (IOException e) {
+            s.close();
+            throw e;
         }
-
-
-        X509Certificate[] certs = session.getPeerCertificateChain();
-        if (certs==null || certs.length==0) 
-            throw new SSLPeerUnverifiedException("No server certificates found");
-
-        //get the servers DN in its string representation
-        String dn = certs[0].getSubjectDN().getName();
-
-        //get the common name from the first cert
-        String cn = getCN(dn);
-        if (!serverName.equalsIgnoreCase(cn)) {
-            throw new SSLPeerUnverifiedException("Invalid SSL server name. "+
-                                                 "Expected '" + serverName +
-                                                 "', got '" + cn + "'");
-        }
-    }
-
-    /**
-     * Parses a X.500 distinguished name for the value of the 
-     * "Common Name" field.
-     * This is done a bit sloppy right now and should probably be done a bit
-     * more according to RFC 2253.
-     *
-     * <pre>
-     * Origin:      jakarta-commons/httpclient
-     * File:        StrictSSLProtocolSocketFactory.java
-     * Revision:    1.5
-     * License:     Apache-2.0
-     * </pre>
-     *
-     * @param dn  a X.500 distinguished name.
-     * @return the value of the "Common Name" field.
-     */
-    private String getCN(String dn) {
-        int i = dn.indexOf("CN=");
-        if (i == -1) {
-            return null;
-        }
-        //get the remaining DN without CN=
-        dn = dn.substring(i + 3);  
-        // System.out.println("dn=" + dn);
-        char[] dncs = dn.toCharArray();
-        for (i = 0; i < dncs.length; i++) {
-            if (dncs[i] == ','  && i > 0 && dncs[i - 1] != '\\') {
-                break;
-            }
-        }
-        return dn.substring(0, i);
-    }
-
-    public String getKeyStore() {
-        return keyStore;
-    }
-
-    // Have custom hooks get passwords
-    // You really need to modify these two implementations
-    protected String getPassword() {
-        return System.getProperty("base.ssl.storepass", "password");
-    }
-
-    protected String getKeyPassword() {
-        return System.getProperty("base.ssl.keypass", "password");
     }
 
     public String getServerName() {
@@ -297,10 +258,6 @@ public class GenericSSLSocketFactory
         return clientAuthNeeded;
     }
 
-    public boolean getServerAuthNeeded() {
-        return serverAuthNeeded;
-    }
-    
     public void setEnabledCipherSuites(String[] enabledCipherSuites) {
         this.enabledCipherSuites = enabledCipherSuites;
     }
@@ -309,19 +266,18 @@ public class GenericSSLSocketFactory
         return enabledCipherSuites;
     }
 
-
     public void setConfiguration(Configuration cfg) throws ConfigurationException {
         this.cfg = cfg;
-        keyStore = cfg.get("keystore");
         clientAuthNeeded = cfg.getBoolean("clientauth");
-        serverAuthNeeded = cfg.getBoolean("serverauth");
-        serverName = cfg.get("servername");
-        password = cfg.get("storepassword", null);
-        keyPassword = cfg.get("keypassword", null);
+        serverName = cfg.get("servername", null);
         enabledCipherSuites = cfg.getAll("addEnabledCipherSuite");
+        setInsecureTrustAll(cfg.getBoolean("insecure-trust-all"));
+        if (cfg.get("keystore", null) != null)
+            throw new ConfigurationException(
+                "'keystore' path is no longer supported: load the KeyStore yourself and call setKeyStore(KeyStore, char[])");
     }
+
     public Configuration getConfiguration() {
         return cfg;
     }
 }
-

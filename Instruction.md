@@ -1,350 +1,220 @@
-# Instruction for Implementing `iso8583.jar`
+# iso8583 library — integration guide
 
-## 1. About the library
+`iso8583-<version>.jar` is a Java library for **ISO 8583 message handling**:
 
-`iso8583.jar` is a Java library for building, packing, unpacking, sending, and receiving ISO 8583 messages.
+- building messages (`ISOMsg`);
+- packing and unpacking them with a packager (`ISO87BPackager`, `ISO93BPackager`, or a JSON-defined `GenericJSONPackager`);
+- framing them over TCP with a connector (`NCCConnector`, `BCDConnector`, `NACConnector`, `HEXConnector`).
 
-The library supports:
+The library **never reads files**. Your app or service reads its own configuration (Android asset, config service, secret store) and passes the library a `String`, `Properties`, `KeyStore` or `SSLContext`.
 
-- Creating ISO 8583 messages
-- Defining message structure with built-in or JSON-based packagers
-- Packing messages into byte arrays
-- Unpacking byte arrays into ISO 8583 fields
-- Sending and receiving messages over TCP connectors
-- Working with binary fields, TPDU headers, and transport framing
+The same jar serves two kinds of consumer:
 
-## 2. Library architecture
+| | Android EDC app | JVM service |
+|---|---|---|
+| Runtime | minSdk 24 (Android 7.x), D8/R8 | Java 11+ |
+| Traffic | one terminal, one connection | many threads, many connections |
+| Notes | R8 keep rules ship inside the jar | see [Threading](#7-threading-jvm-services) |
 
-The library is included 5 layers:
+How to obtain or build the jar, the sample app, and the 1.x → 2.0 migration notes are in [USING_ISO8583_JAR.md](USING_ISO8583_JAR.md).
 
-- Message layer:  `ISOMsg`, `ISOField`, `BinaryFieldComponent`
-- Packager layer: `ISO87BPackager`, `ISO93BPackager`, `GenericJSONPackager`
-- Connector layer: `BCDConnector`, `NCCConnector`, `NACConnector`, `HEXConnector`
-- Utility and logging layer: `ISOUtil`, `Logger`, `SimpleLogListener`
-- Field-definition layer classes such as `IFB_NUMERIC`, `IFB_LLNUM`, `IFB_LLLCHAR`, `IFB_BINARY`
+---
 
-For most integrations, users only work directly with the first 4 layers.
+## 1. Add the jar
 
-## 3. Main entities and classes
-
-This section explains the main classes a user needs to understand in order to implement the jar correctly.
-
-## 3.1 Core message classes
-
-### `com.base.iso.core.ISOMsg`
-
-Purpose:
-
-- The main ISO 8583 message object
-- Holds MTI, bitmap, and fields
-- Packs and unpacks using an assigned packager
-
-What users do with it:
-
-- Create a message
-- Set MTI
-- Set ISO fields
-- Pack to bytes
-- Unpack response bytes
-
-Main methods:
-
-- `setMTI(String)`
-- `set(int, String)`
-- `set(int, byte[])`
-- `setPackager(iPackager)`
-- `pack()`
-- `unpack(byte[])`
-- `getString(int)`
-- `hasField(int)`
-
-Example:
-
-```java
-ISOMsg msg = new ISOMsg();
-msg.setPackager(packager);
-msg.setMTI("0200");
-msg.set(3, "000000");
-msg.set(11, "123456");
-```
-
-### `com.base.iso.core.ISOField`
-
-Purpose:
-
-- Represents a normal field containing a text value
-
-Typical use:
-
-- Usually not created directly by application code
-- Created internally when `ISOMsg.set(fieldNo, value)` is called
-
-### `com.base.iso.core.BinaryFieldComponent`
-
-Purpose:
-
-- Represents a binary field such as PIN, MAC, EMV, or raw binary content
-
-Typical use:
-
-- Usually handled through `ISOMsg.set(int, byte[])`
-- Can also be triggered by `ISOMsg.set(int, String)` when the packager marks that field as binary
-
-## 3.2 Packager classes
-
-### `com.base.iso.packager.ISO87BPackager`
-
-Purpose:
-
-- Built-in ISO 8583:1987 binary packager
-
-Use when:
-
-- Your host uses the ISO 8583:1987 binary field definition
-
-### `com.base.iso.packager.ISO93BPackager`
-
-Purpose:
-
-- Built-in ISO 8583:1993 binary packager
-
-Use when:
-
-- Your host uses the ISO 8583:1993 binary field definition
-
-### `com.base.iso.packager.GenericJSONPackager`
-
-Purpose:
-
-- Dynamic packager that loads field definitions from JSON
-
-Use when:
-
-- Your host has a custom ISO 8583 field definition
-- You want to manage field layouts outside Java code
-
-Main methods:
-
-- `loadFromJsonFile(String filePath)`
-- `setFieldsFromJson(String jsonString)`
-- `printFields()`
-
-### `com.base.iso.packager.aBasePackager`
-
-Purpose:
-
-- Base implementation used by all concrete packagers
-
-Typical use:
-
-- Not used directly by business code
-- Important because it provides the actual `pack()` and `unpack()` behavior behind all packagers
-
-## 3.3 Connector classes
-
-Connector classes are responsible for TCP transport. They do not define the ISO fields. They define how packed bytes are framed and sent.
-
-### `com.base.iso.connector.NCCConnector`
-
-Purpose:
-
-- Sends and receives ISO messages using:
-  - 2-byte BCD length
-  - optional TPDU/header
-  - packed ISO payload
-
-Main methods:
-
-- `connect()`
-- `send(ISOMsg)`
-- `receive()`
-- `disconnect()`
-
-### `com.base.iso.connector.BCDConnector`
-
-Purpose:
-
-- Similar to `NCCConnector`
-- Uses BCD-style message framing
-
-Use when:
-
-- Your host expects BCD length framing and optional TPDU
-
-### `com.base.iso.connector.NACConnector`
-
-Purpose:
-
-- Alternative connector for another framing style
-
-Use when:
-
-- The host specification explicitly requires NAC transport
-
-### `com.base.iso.connector.HEXConnector`
-
-Purpose:
-
-- Alternative connector for hosts that frame data differently
-
-Use when:
-
-- Your host specification requires HEX-oriented framing
-
-### `com.base.iso.connector.BaseConnector`
-
-Purpose:
-
-- Base connector implementation
-- Handles socket lifecycle, send, receive, timeouts, header handling, and filters
-
-Typical use:
-
-- Not used directly in most business implementations
-- Important as the transport base class for all connectors or make your owned connector
-
-## 3.4 Utility and logging classes
-
-### `com.base.iso.util.ISOUtil`
-
-Purpose:
-
-- Utility helper for hex, BCD, byte arrays, dumps, and formatting
-
-Useful methods:
-
-- `hexString(byte[])`
-- `hex2byte(String)`
-- `hexdump(byte[])`
-- `str2bcd(String, boolean)`
-- `bcd2str(byte[], int, int, boolean)`
-
-### `com.base.iso.util.log.Logger`
-
-Purpose:
-
-- Central logger for connector and packager events
-
-
-## 3.5 Field-definition classes
-
-These classes define how a single ISO field is encoded.
-
-Examples:
-
-- `IFB_NUMERIC`
-- `IFB_LLNUM`
-- `IFB_LLLNUM`
-- `IFB_LLCHAR`
-- `IFB_LLLCHAR`
-- `IFB_BINARY`
-- `IFB_BITMAP`
-- `IF_CHAR`
-
-What they mean:
-
-- `NUMERIC`: fixed-length numeric field
-- `LLNUM`: variable numeric field with 2-digit length prefix
-- `LLLNUM`: variable numeric field with 3-digit length prefix
-- `LLCHAR`: variable character field with 2-digit length prefix
-- `LLLCHAR`: variable character field with 3-digit length prefix
-- `BINARY`: binary field
-- `BITMAP`: bitmap field
-
-Typical use:
-
-- Most application teams do not instantiate these classes directly
-- They are usually declared by built-in packagers or loaded through JSON with `GenericJSONPackager`
-
-## 4. How to use the jar file
-
-## 4.1 Prerequisites
-
-- Java 11 or later
-- If using `GenericJSONPackager`, add Jackson dependencies
-
-## 4.2 Add the jar to your project 
-
-### Gradle
+The jar is self-contained: it has **no third-party runtime dependencies** (JDK / Android framework classes only). Copy the one file into your project:
 
 ```gradle
 dependencies {
-    implementation files("./iso8583.jar")
-    implementation "com.fasterxml.jackson.core:jackson-core:2.17.1"
-    implementation "com.fasterxml.jackson.core:jackson-databind:2.17.1"
+    implementation files('libs/iso8583-2.0.0.jar')
 }
 ```
 
-## 4.3 Implementation steps
+Do not add Jackson or anything else for this library. Since 2.0.0 the JSON layout is parsed by an internal reader.
 
-A normal integration should follow these steps:
-
-1. Add the jar to the project
-2. Choose a packager
-3. Create an `ISOMsg`
-4. Set MTI and required fields
-5. Connect to the host using the required connector
-6. Send the request
-7. Receive and parse the response
-8. Handle logging, response code, and errors
-
-## 5. Example code
-
-## 5.1 Example 1: pack and unpack locally
+## 2. Build a message
 
 ```java
-import com.base.iso.core.ISOMsg;
-import com.base.iso.packager.ISO87BPackager;
-import com.base.iso.util.ISOUtil;
+ISO87BPackager packager = new ISO87BPackager();
 
-public class Main {
-    public static void main(String[] args) throws Exception {
-        ISO87BPackager packager = new ISO87BPackager();
-
-        ISOMsg request = new ISOMsg();
-        request.setPackager(packager);
-        request.setMTI("0200");
-        request.set(2, "4761739001010010");
-        request.set(3, "000000");
-        request.set(4, "000000010000");
-        request.set(7, "0310123456");
-        request.set(11, "123456");
-        request.set(41, "TERMID01");
-        request.set(49, "704");
-
-        byte[] packed = request.pack();
-        System.out.println("HEX: " + ISOUtil.hexString(packed));
-
-        ISOMsg response = new ISOMsg();
-        response.setPackager(packager);
-        response.unpack(packed);
-
-        System.out.println("MTI: " + response.getMTI());
-        System.out.println("F11: " + response.getString(11));
-    }
-}
+ISOMsg msg = new ISOMsg();
+msg.setPackager(packager);          // FIRST — see below
+msg.setMTI("0200");
+msg.set(2, pan);
+msg.set(3, "000000");
+msg.set(4, "000000010000");
+msg.set(11, stan);
+msg.set(41, terminalId);
+msg.set(52, pinBlockHex);           // binary field: hex string → bytes
 ```
 
-## 5.2 Example 2: use `GenericJSONPackager`
+Rules:
+
+- **Set the packager before the values.** `set(int, String)` asks the packager whether the field is binary. With the packager set, F52/F55-style binary fields are parsed from hex into bytes. Without it, the value is stored as text and packs wrongly.
+- Binary values must be valid hex. Since 2.0.0, a non-hex character throws `BaseException("invalid hex for field n …")`. In 1.x it silently produced a corrupt PIN block. Odd-length hex is left-padded with `0` (`"ABC"` → `0x0A 0xBC`).
+- `set(n, (String) null)` removes field *n*. `set(int, byte[])` always stores raw bytes.
+- Use **one `ISOMsg` per transaction**. Don't share a message object between threads.
+
+## 3. Choose a packager
+
+| Packager | Use when |
+|---|---|
+| `ISO87BPackager` | Host uses the ISO 8583:1987 binary layout |
+| `ISO93BPackager` | Host uses the ISO 8583:1993 binary layout |
+| `GenericJSONPackager` | Host has a custom layout you keep as data |
+
+### JSON layout (`GenericJSONPackager`)
+
+Your code reads the layout text itself, then passes it in:
 
 ```java
-import com.base.iso.core.ISOMsg;
-import com.base.iso.packager.GenericJSONPackager;
+// Android: from your own asset
+String json;
+try (InputStream in = context.getAssets().open("iso_layout.json")) {
+    json = readUtf8(in);            // your helper
+}
+GenericJSONPackager packager = new GenericJSONPackager();
+packager.setFieldsFromJson(json);   // throws IllegalArgumentException if the layout is invalid
+```
 
-public class Main {
-    public static void main(String[] args) throws Exception {
-        GenericJSONPackager packager = new GenericJSONPackager();
-        packager.loadFromJsonFile("iso87binary.json");
+Schema:
 
-        ISOMsg msg = new ISOMsg();
-        msg.setPackager(packager);
-        msg.setMTI("0800");
-        msg.set(11, "000001");
-        msg.set(41, "00000001");
-        msg.set(70, "301");
+```json
+{ "isofields": [
+  { "id": 0,  "length": 4,  "name": "MTI",      "class": "IFB_NUMERIC", "pad": true },
+  { "id": 1,  "length": 16, "name": "BIT MAP",  "class": "IFB_BITMAP" },
+  { "id": 2,  "length": 19, "name": "PAN",      "class": "IFB_LLNUM",   "pad": false }
+]}
+```
 
-        byte[] packed = msg.pack();
-        System.out.println(packed.length);
-    }
+- `class` is the simple name of a codec in `com.base.iso.fields` (`IFB_NUMERIC`, `IFB_LLNUM`, `IFB_LLLCHAR`, `IFB_BINARY`, `IF_CHAR`, ...).
+- `id` and `length` may be numbers or numeric strings. `pad` may be `true`/`false` or `"true"`/`"false"`. `name` is optional.
+- For `IFB_NUMERIC`, `pad: true` means left-padded BCD, which is what `ISO87BPackager` uses. Copy that when you port a code-defined layout.
+- **Invalid layouts fail loudly.** These all throw `IllegalArgumentException` with the entry index or class name:
+  - malformed JSON;
+  - a missing `isofields` array;
+  - a missing `id`, `length` or `class`;
+  - an `id` outside 0..128, or a duplicate `id`;
+  - an unknown class.
+
+  On failure the previous layout stays active. (1.x printed a stack trace and carried on.)
+- A new `GenericJSONPackager()` starts with the ISO87B layout.
+
+## 4. Pack and unpack
+
+```java
+byte[] packed = msg.pack();
+
+ISOMsg resp = new ISOMsg();
+resp.setPackager(packager);
+resp.unpack(responseBytes);
+String rc = resp.getString(39);
+```
+
+If unpacking fails, the `BaseException` message names the field and the reason. Example: `field packager '3' is null (-) unpacking field=3, consumed=10`.
+
+## 5. Send over TCP (connectors)
+
+A connector frames the packed message as **[length prefix][header/TPDU][packed message]**:
+
+| Connector | Length prefix | Header |
+|---|---|---|
+| `NCCConnector` | 2-byte BCD (max 9999) | TPDU; src/dest swapped when the message carries a 5-byte header (`tpdu-swap`, default on) |
+| `BCDConnector` | 2-byte BCD | TPDU; src/dest always swapped for a 5-byte message header |
+| `NACConnector` | 2-byte binary, big-endian | TPDU; swap like NCC |
+| `HEXConnector` | 4 ASCII hex characters (max 0xFFFF) | optional |
+
+```java
+byte[] tpdu = ISOUtil.hex2byte("6000010000");
+NCCConnector conn = new NCCConnector(host, port, packager, tpdu);
+conn.connect();                     // throws IOException if refused / unreachable
+try {
+    conn.send(msg);                 // uses the connector's packager
+    ISOMsg resp = conn.receive();
+} finally {
+    conn.disconnect();
 }
 ```
+
+- Retries are safe: re-sending the **same** `ISOMsg` (a retry, or a reversal re-sent after a timeout) puts the same TPDU on the wire. Since 2.0.0 the swap works on a copy of the header.
+- If the length prefix is corrupt (not BCD/hex), `receive()` throws `BaseException("invalid length prefix: …")` **and closes the socket**. Reconnect before the next exchange.
+- The connector does **not** match responses to requests. Match them yourself by F11 (STAN) / F37 (RRN).
+- `sendraw` (NCC), `sendBcd` (BCD) and `sendAscii` (NAC) send pre-packed bytes. Their framing **differs** from the connector's own `send(ISOMsg)` in two cases:
+  - `NCCConnector.sendraw` uses a binary length;
+  - `NACConnector.sendAscii` uses a 4-digit ASCII length.
+
+  Check the host spec before you use them.
+
+### TLS
+
+`GenericSSLSocketFactory` (and the legacy name `SunJSSESocketFactory`) is **secure by default**:
+
+- It validates the server certificate, against the trust store you inject or else the platform CAs.
+- It verifies the host name, honouring SANs.
+- It uses a `TLS` context.
+
+```java
+GenericSSLSocketFactory tls = new GenericSSLSocketFactory();
+tls.setTrustStore(myTrustStore);            // KeyStore you loaded (Android: BKS/PKCS12 asset or AndroidKeyStore)
+tls.setKeyStore(myClientKeys, keyPassword); // only for mutual TLS
+tls.setServerName("host.example.com");      // when connecting by IP to a host whose cert names a DNS host
+conn.setSocketFactory(tls);
+```
+
+Alternatively, pass a fully built context with `setSSLContext(SSLContext)`.
+
+Trust-all (`setInsecureTrustAll(true)` or config `insecure-trust-all=true`) disables validation and logs a warning. Use it in test labs only.
+
+Keystore paths are no longer accepted: config key `keystore` throws `ConfigurationException`.
+
+## 6. Logging without leaking card data
+
+Attach a `Logger` to packagers and connectors. Always add **`ProtectLogListener` first**:
+
+```java
+Logger logger = new Logger();
+logger.addListener(new ProtectLogListener());          // masks before anything is written
+logger.addListener(new SimpleLogListener(System.out)); // or your own listener (logcat, log shipper)
+conn.setLogger(logger, "host-a");
+packager.setLogger(logger, "host-a");
+```
+
+- `ProtectLogListener` replaces each `ISOMsg` in a log event with a masked clone. Your message is not changed.
+  - F2, F35 and F45 are masked with `ISOUtil.protect`, keeping the first 6 and last 4 digits.
+  - F52 and F55 are wiped.
+  - Raw `byte[]` items are replaced by `[n bytes]`.
+- By default packagers log only field numbers, codecs and lengths, never values or raw hex. `packager.setLogFieldValues(true)` turns values on for local debugging **with test cards only**.
+- Connector receive errors log the frame size, not a hexdump.
+
+## 7. Threading (JVM services)
+
+- **One connector per socket.** Use one sender thread and one receiver thread per connector, or lock externally. `send` and `receive` are internally serialized per direction.
+- **Packagers are shareable** across threads once configured. pack/unpack keep no per-call state.
+- **Reloading a JSON layout:** don't call `setFieldsFromJson` on a packager other threads are using. Build a new `GenericJSONPackager`, then swap the reference (e.g. a `volatile` field or `AtomicReference`).
+- **One `ISOMsg` per transaction.** Match responses by F11/F37.
+- `BaseConnector.setName(n)` registers the connector for `BaseConnector.getChannel(n)`. The registry is thread-safe, and renaming drops the old entry. Call `unregister()` when you retire a named connector.
+
+## 8. Android specifics
+
+- minSdk 24 is supported. The build fails if library code uses an API missing on Android 7 (`java.nio.file`, `java.time`, Java 9+ methods). This is checked by animal-sniffer against the API 24 signature.
+- **R8:** keep rules ship inside the jar at `META-INF/proguard/iso8583.pro`, and R8 applies them automatically. They keep:
+  - the field codecs that JSON layouts name;
+  - the packagers that `ISOMsg` deserialization instantiates.
+
+  If you see `IllegalArgumentException: Unknown field class '…'` only in release builds, check that the jar's rules weren't filtered out.
+- Do network I/O (`connect`, `send`, `receive`) off the main thread.
+
+## 9. Key classes
+
+| Class | Role |
+|---|---|
+| `core.ISOMsg` | The message: MTI, bitmap, fields, header |
+| `core.ISOField` / `core.BinaryFieldComponent` | Text / binary field values (usually created by `ISOMsg.set`) |
+| `packager.aBasePackager` | The real pack/unpack logic behind every packager |
+| `fields.*` | Field codecs: `IFB_*` binary/BCD, `IFA_*` ASCII, `IF_CHAR` fixed text, `IFAE_*` EBCDIC, `IFA_TT*` tagged |
+| `connector.BaseConnector` | Socket lifecycle, send/receive, filters, timeouts |
+| `util.ISOUtil` | Hex/BCD helpers: `hexString`, `hex2byte`, `str2bcd`, `bcd2str`, `protect` |
+| `util.log.Logger`, `ProtectLogListener`, `SimpleLogListener` | Logging |
+| `config.SimpleConfiguration` | `Properties`-backed config for `setConfiguration(...)` |
+
+Codec name decoding: `LL`/`LLL` = 2-/3-digit length prefix; `NUM` = numeric; `CHAR` = text; `BINARY` = raw bytes; `IFB_` = binary/BCD encoding; `IFA_` = ASCII; `LLH`/`LLLH` = binary length prefix instead of BCD.

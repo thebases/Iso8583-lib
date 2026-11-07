@@ -9,3 +9,10 @@ app/bin
 appiso/build
 appiso/bin
 appiso/cfg
+.agents
+.claude
+CLAUDE.md
+
+# IDE / machine-specific files
+.idea/
+local.properties
