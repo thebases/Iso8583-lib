@@ -3,7 +3,7 @@
 `iso8583-<version>.jar` is a Java library for **ISO 8583 message handling**:
 
 - building messages (`ISOMsg`);
-- packing and unpacking them with a packager (`ISO87BPackager`, `ISO93BPackager`, or a JSON-defined `GenericJSONPackager`);
+- packing and unpacking them with a packager (`ISO87BPackager`, `ISO93BPackager`, or a JSON/XML-defined `GenericJSONPackager`);
 - framing them over TCP with a connector (`NCCConnector`, `BCDConnector`, `NACConnector`, `HEXConnector`).
 
 The library **never reads files**. Your app or service reads its own configuration (Android asset, config service, secret store) and passes the library a `String`, `KeyStore` or `SSLContext`. Everything else is set with plain setters; there is no configuration object or name registry.
@@ -14,25 +14,92 @@ The same jar serves two kinds of consumer:
 |---|---|---|
 | Runtime | minSdk 24 (Android 7.x), D8/R8 | Java 11+ |
 | Traffic | one terminal, one connection | many threads, many connections |
-| Notes | R8 keep rules ship inside the jar | see [Threading](#7-threading-jvm-services) |
+| Notes | see [Android EDC integration](#9-android-edc-integration) | see [Threading](#8-threading-jvm-services) |
 
-How to obtain or build the jar, the sample app, and the 1.x → 2.0 migration notes are in [USING_ISO8583_JAR.md](USING_ISO8583_JAR.md).
+Contents:
+
+1. [Get the jar](#1-get-the-jar)
+2. [Add the jar to your project](#2-add-the-jar-to-your-project)
+3. [Build a message](#3-build-a-message)
+4. [Choose a packager](#4-choose-a-packager)
+5. [Pack and unpack](#5-pack-and-unpack)
+6. [Send over TCP (connectors)](#6-send-over-tcp-connectors)
+7. [Logging without leaking card data](#7-logging-without-leaking-card-data)
+8. [Threading (JVM services)](#8-threading-jvm-services)
+9. [Android EDC integration](#9-android-edc-integration)
+10. [Sample client (`appiso`)](#10-sample-client-appiso)
+11. [Migrating from 1.x to 2.0.0](#11-migrating-from-1x-to-200)
+12. [Key classes](#12-key-classes)
 
 ---
 
-## 1. Add the jar
+## 1. Get the jar
 
-The jar is self-contained: it has **no third-party runtime dependencies** (JDK / Android framework classes only). Copy the one file into your project:
+Requirements: a JDK 17+ to run Gradle 8.14. A Java 11 toolchain is used to compile, and the foojay plugin downloads it if it's missing.
+
+```sh
+./gradlew :app:build        # compile, test, API/dependency checks, jars
+```
+
+Outputs in `app/build/libs/`:
+
+| File | Purpose |
+|---|---|
+| `iso8583-2.0.0.jar` | The library. **The only file consumers need.** |
+| `iso8583-2.0.0-sources.jar` | Sources, for IDE navigation and on-device debugging |
+
+Optional internal Maven publishing: `./gradlew :app:publishToMavenLocal` (coordinates `com.base.iso:iso8583:2.0.0`; the POM lists no dependencies).
+
+### What the jar guarantees
+
+`./gradlew :app:check` enforces each of these and fails the build on a violation:
+
+- **No third-party runtime dependencies** (`verifySelfContained`). The jar runs with JDK or Android framework classes only. If a dependency ever becomes unavoidable, it must be shaded and relocated under `com.base.iso.shaded.*`. See plan T21 in `.agents/planning/`.
+- **Only Android-available JDK modules** (`jdepsCheck`): `java.base` and `java.sql`. JSON and XML are handled by the library's own code (`com.base.iso.util.json`, `com.base.iso.util.xml`), not by `javax.xml` or a third-party library.
+- **Only Android API 24 APIs** (`animalsnifferMain`). This rejects `java.nio.file`, `java.time`, `java.net.http`, and Java 9+ method overloads such as `ByteBuffer.position(int)`.
+- **Bytecode for Java 11** (class file major 55), for JVM 11+ and Android D8.
+- **R8 keep rules inside the jar** at `META-INF/proguard/iso8583.pro`.
+
+Jar contents: `com/base/iso/**` and `META-INF/**` (manifest with `Automatic-Module-Name: com.base.iso`, plus the R8 rules).
+
+## 2. Add the jar to your project
+
+Copy the one jar into your project. Add nothing else for this library: no Jackson, no XML parser.
 
 ```gradle
+// JVM service: build.gradle
 dependencies {
     implementation files('libs/iso8583-2.0.0.jar')
 }
 ```
 
-Do not add Jackson or anything else for this library. Since 2.0.0 the JSON layout is parsed by an internal reader.
+```kotlin
+// Android app: app/build.gradle.kts
+android {
+    defaultConfig { minSdk = 24 }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+}
+dependencies {
+    implementation(files("libs/iso8583-2.0.0.jar"))
+}
+```
 
-## 2. Build a message
+If you published it with `publishToMavenLocal`, use `implementation("com.base.iso:iso8583:2.0.0")` with `mavenLocal()` in your repositories instead.
+
+### Release smoke checks
+
+Before shipping a new jar version, run these with **only** the jar on the classpath:
+
+1. **JVM:** compile and run a small client that builds a layout with `ISO87BPackager` and with `GenericJSONPackager.setFieldsFromJson(<string>)`, then does an `NCCConnector` loopback send/receive.
+2. **Android:** in an app with `minSdk 24` and `minifyEnabled true`:
+   - run `assembleRelease`;
+   - on an Android 7 device or emulator, read a layout from the app's own asset into a `String`;
+   - call `setFieldsFromJson` and pack a 0800.
+
+## 3. Build a message
 
 ```java
 ISO87BPackager packager = new ISO87BPackager();
@@ -55,7 +122,7 @@ Rules:
 - `set(n, (String) null)` removes field *n*. `set(int, byte[])` always stores raw bytes.
 - Use **one `ISOMsg` per transaction**. Don't share a message object between threads.
 
-## 3. Choose a packager
+## 4. Choose a packager
 
 | Packager | Use when |
 |---|---|
@@ -181,7 +248,7 @@ Not supported, rejected with an error that names the entry path (e.g. `isofield[
 - tagged/TLV sub-packagers (`tagMapper`, `tagSize`, `lenSize`, or any `packager` other than `GenericSubFieldPackager`);
 - `headerLength` inside a sub-layout.
 
-## 4. Pack and unpack
+## 5. Pack and unpack
 
 ```java
 byte[] packed = msg.pack();
@@ -244,7 +311,7 @@ String xml      = Xml.write(root);    // build trees with new XmlElement("a").se
   - The parser never loads external resources, and it refuses DOCTYPE internal subsets, so entity-expansion attacks can't run.
   - Text that is only whitespace between elements is dropped.
 
-## 5. Send over TCP (connectors)
+## 6. Send over TCP (connectors)
 
 A connector frames the packed message as **[length prefix][header/TPDU][packed message]**:
 
@@ -287,7 +354,7 @@ Connector options (all setters, call before `connect()`):
 | `setExpectKeepAlive(bool)` | false | `receive()` skips zero-length frames |
 | `setMaxPacketLength(n)` | 100000 | Larger frames are rejected |
 | `setOverrideHeader(bool)` | false | Always send the connector header, ignoring `ISOMsg.getHeader()` |
-| `setLocalAddress(iface, port)` | none | Bind the local side |
+| `setLocalAddress(iface, port)` | none | Bind the local side (ignored when `setConnectTimeout` > 0) |
 | `setTpduSwap(bool)` (NCC, NAC) | true | Swap a 5-byte message header's src/dest |
 
 ### TLS
@@ -310,7 +377,7 @@ Alternatively, pass a fully built context with `setSSLContext(SSLContext)`.
 
 Trust-all (`setInsecureTrustAll(true)`) disables validation and logs a warning. Use it in test labs only.
 
-## 6. Logging without leaking card data
+## 7. Logging without leaking card data
 
 Attach a `Logger` to packagers and connectors. Always add **`ProtectLogListener` first**:
 
@@ -329,7 +396,7 @@ packager.setLogger(logger, "host-a");
 - By default packagers log only field numbers, codecs and lengths, never values or raw hex. `packager.setLogFieldValues(true)` turns values on for local debugging **with test cards only**.
 - Connector receive errors log the frame size, not a hexdump.
 
-## 7. Threading (JVM services)
+## 8. Threading (JVM services)
 
 - **One connector per socket.** Use one sender thread and one receiver thread per connector, or lock externally. `send` and `receive` are internally serialized per direction.
 - **Packagers are shareable** across threads once configured. pack/unpack keep no per-call state.
@@ -337,17 +404,91 @@ packager.setLogger(logger, "host-a");
 - **One `ISOMsg` per transaction.** Match responses by F11/F37.
 - There is no global connector or logger registry. Keep references to your connectors and loggers yourself.
 
-## 8. Android specifics
+## 9. Android EDC integration
 
 - minSdk 24 is supported. The build fails if library code uses an API missing on Android 7 (`java.nio.file`, `java.time`, Java 9+ methods). This is checked by animal-sniffer against the API 24 signature.
 - **R8:** keep rules ship inside the jar at `META-INF/proguard/iso8583.pro`, and R8 applies them automatically. They keep:
-  - the field codecs that JSON layouts name;
+  - the field codecs that JSON/XML layouts name;
   - the packagers that `ISOMsg` deserialization instantiates.
 
   If you see `IllegalArgumentException: Unknown field class '…'` only in release builds, check that the jar's rules weren't filtered out.
-- Do network I/O (`connect`, `send`, `receive`) off the main thread.
+- **Never on the main thread.** `connect`, `send` and `receive` block; on the main thread Android throws `NetworkOnMainThreadException`. Use `Dispatchers.IO` or an executor.
+- **Always set timeouts.** Both default to 0 (wait forever). A terminal must not hang on a dead host: set `setConnectTimeout` and `setTimeout`. Treat a read timeout after `send` as "outcome unknown": send a reversal, don't silently resend the sale.
+- **Load the layout once.** Read the asset at start-up (off the main thread) and keep one packager as a singleton, e.g. a Hilt `@Singleton` provider.
+- **Trust store on device:** load a BKS/PKCS12 file from assets or raw resources, or use `AndroidKeyStore` for client keys, and pass the `KeyStore` to `GenericSSLSocketFactory`. Never ship `setInsecureTrustAll(true)` in a release build.
+- **Logging:** send `Logger` output to logcat through your own listener, always behind `ProtectLogListener`. Keep `setLogFieldValues(false)` in release builds.
 
-## 9. Key classes
+### Kotlin example
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object IsoModule {
+    @Provides @Singleton
+    fun packager(@ApplicationContext ctx: Context): GenericJSONPackager {
+        val json = ctx.assets.open("iso_layout.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        return GenericJSONPackager().apply { setFieldsFromJson(json) }   // throws if the layout is invalid
+    }
+}
+
+class IsoHostClient @Inject constructor(
+    private val packager: GenericJSONPackager,
+    private val logger: Logger,
+) {
+    suspend fun exchange(host: String, port: Int, request: ISOMsg): ISOMsg = withContext(Dispatchers.IO) {
+        val conn = NCCConnector(host, port, packager, ISOUtil.hex2byte("6000010000"))
+        conn.setConnectTimeout(10_000)
+        conn.setLogger(logger, "host")
+        conn.connect()                      // IOException if refused / unreachable
+        try {
+            conn.setTimeout(30_000)         // read timeout; set after connect()
+            conn.send(request)
+            conn.receive()
+        } finally {
+            conn.disconnect()
+        }
+    }
+}
+```
+
+Build `request` with `setPackager(packager)` **before** setting fields (see [Build a message](#3-build-a-message)), and match the response by F11/F37.
+
+## 10. Sample client (`appiso`)
+
+`appiso/src/main/java/com/base/app/App.java` sends an 0800 echo test over `NCCConnector` using `ISO87BPackager`, with `ProtectLogListener` chained before `SimpleLogListener`. It reads no files.
+
+```sh
+./gradlew :appiso:run --args="<host> <port>"   # defaults: localhost 8000 — use a test host only
+```
+
+## 11. Migrating from 1.x to 2.0.0
+
+### Removed APIs
+
+| Removed | Replacement |
+|---|---|
+| `GenericJSONPackager.loadFromJsonFile(String path)` | Read the file or asset yourself, then call `setFieldsFromJson(content)` |
+| Package `com.base.iso.config` (`Configuration`, `SimpleConfiguration`, `Configurable`, `ConfigurationException`) and every `setConfiguration(...)` | Setters: `setHost`/`setHosts`, `setTimeout`, `setConnectTimeout`, `setKeepAlive`, `setExpectKeepAlive`, `setMaxPacketLength`, `setOverrideHeader`, `setLocalAddress`, `setTpduSwap` (NCC/NAC); TLS: `setServerName`, `setClientAuthNeeded`, `setEnabledCipherSuites`, `setInsecureTrustAll`; validators: `setMinLength`, `setMaxLength`, `setBreakOnError` |
+| `BaseConnector.setName`, `BaseConnector.getChannel`, `BaseConnector.unregister`, `iConnector.setName` | Keep your own reference to the connector |
+| `Logger.getLogger(name)`, `Logger.setName`, `Logger.getName`, `Logger.destroy`, `Log.getLog(name, realm)` | `new Logger()` and keep the reference; `removeAllListeners()` to detach |
+| `iDestroyable`, `DefaultTimer` | None (unused) |
+| `GenericSSLSocketFactory` / `SunJSSESocketFactory`: `setKeyStore(String path)`, `setPassword`, `setKeyPassword`, `getKeyStore()` | `setKeyStore(KeyStore, char[])`, `setTrustStore(KeyStore)` or `setSSLContext(SSLContext)` |
+| Bundled resource `com/base/packager/iso87binary.json` | `ISO87BPackager`, or your own JSON string |
+| Jackson on the classpath | Nothing: JSON and XML are handled internally (`Json`, `Xml`) |
+
+### Behaviour changes
+
+- **TLS validates by default.** In 1.x the default trusted any certificate. Hosts with a self-signed or private-CA certificate need `setTrustStore(...)`. `setServerAuthNeeded(...)` is deprecated and ignored. Trust-all needs `setInsecureTrustAll(true)`.
+- **TLS checks the host name** against the certificate SANs. If you connect by IP to a host whose certificate names a DNS host, call `setServerName("dns.name")`.
+- **`setFieldsFromJson` throws** `IllegalArgumentException` on an invalid layout or unknown class, and keeps the previous layout. In 1.x it printed a stack trace and continued.
+- **Non-hex values for binary fields throw** `BaseException` in `ISOMsg.set(int, String)`.
+- **A corrupt length prefix closes the socket** in `receive()`.
+- **Packager logs omit field values by default.** Use `setLogFieldValues(true)` to debug.
+- `connect()` already threw `IOException("Unable to connect")` on a refused connection in 1.x. The extra `ConnectException` path now rethrows too.
+
+Unchanged: the wire format. Golden-master tests pin ISO87B/ISO93B packing and the framing of every connector.
+
+## 12. Key classes
 
 | Class | Role |
 |---|---|
