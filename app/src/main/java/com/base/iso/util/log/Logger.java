@@ -23,7 +23,6 @@ import com.base.iso.interfaces.log.iLoggeable;
 public class Logger implements iLogProducer {
     
     Vector listeners;
-    static volatile boolean versionShown = false;
 
     public Logger () {
         super();
@@ -47,10 +46,6 @@ public class Logger implements iLogProducer {
     public static void log (LogEvent evt) {
         Logger l = null;
         iLogSource source = evt.getSource();
-        if (!versionShown) {
-            evt.addMessage ("");
-            versionShown = !versionShown;
-        }
         if (source != null)
             l = source.getLogger();
         if (l != null && l.hasListeners ()) {

@@ -9,8 +9,13 @@ repositories {
     mavenCentral()
 }
 
+// Consume the library exactly as an integrator would: the built jar file, not the :app project.
+// builtBy makes ':appiso:*' tasks run ':app:jar' first, so the file always exists and is current.
+def isoVersion = '2.0.0'
+def isoJar = rootProject.file("app/build/libs/iso8583-${isoVersion}.jar")
+
 dependencies {
-    implementation project(":app")
+    implementation files(isoJar) { builtBy ':app:jar' }
     // JUnit 5 for testing
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.platform.launcher

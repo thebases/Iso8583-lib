@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.base.iso.core.BaseComponent;
@@ -225,7 +227,7 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                 consumed += getBitMapfieldPackager().unpack(bitmap,b,consumed);
                 bmap = (BitSet) bitmap.getValue();
                 if (evt != null)
-                    evt.addMessage ("<bitmap>"+bmap.toString()+"</bitmap>");
+                    evt.addMessage (bitmapEntry (bmap));
                 m.set (bitmap);
                 maxField = Math.min(maxField, bmap.size());
             }
@@ -244,7 +246,7 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                         int start = consumed;
                         consumed += fld[i].unpack (c, b, consumed);
                         if (evt != null)
-                            logUnpackedField (evt, i, c, consumed - start);
+                            logUnpackedField (evt, i, fld[i], c, consumed - start);
                         m.set(c);
                     }
                 } catch (BaseException e) {
@@ -288,31 +290,37 @@ public abstract class aBasePackager implements iPackager, iLogSource {
      * are written only when {@link #setLogFieldValues(boolean)} is on; otherwise only the field
      * number, codec and length are logged (T12, PCI DSS req. 3).
      */
-    private void logUnpackedField (LogEvent evt, int i, BaseComponent c, int packedLen)
+    private void logUnpackedField (LogEvent evt, int fieldNo, aISOFieldBase codec, BaseComponent c, int packedLen)
         throws BaseException
     {
-        if (!logFieldValues) {
-            evt.addMessage ("<unpack fld=\"" + i + "\" packager=\""
-                + fld[i].getClass().getName() + "\" len=\"" + packedLen + "\"/>");
-            return;
+        Map<String, Object> f = new LinkedHashMap<>();
+        f.put ("field", fieldNo);
+        f.put ("codec", codec.getClass().getSimpleName());
+        if (packedLen >= 0)
+            f.put ("len", packedLen);
+        if (logFieldValues) {
+            Object v = c.getValue();
+            if (v instanceof byte[])
+                f.put ("binary", ISOUtil.hexString ((byte[]) v));
+            else if (v instanceof ISOMsg)
+                f.put ("value", v);
+            else
+                f.put ("value", String.valueOf (v));
         }
-        evt.addMessage ("<unpack fld=\"" + i
-            +"\" packager=\""
-            +fld[i].getClass().getName()+ "\">");
-        if (c.getValue() instanceof ISOMsg)
-            evt.addMessage (c.getValue());
-        else if (c.getValue() instanceof byte[]) {
-            evt.addMessage ("  <value type='binary'>"
-                +ISOUtil.hexString((byte[]) c.getValue())
-                + "</value>");
-        }
-        else {
-            evt.addMessage ("  <value>"
-                +c.getValue()
-                + "</value>");
-        }
-        evt.addMessage ("</unpack>");
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put ("unpack", f);
+        evt.addMessage (entry);
     }
+
+    private static Map<String, Object> bitmapEntry (BitSet bmap) {
+        List<Integer> bits = new ArrayList<>();
+        for (int i = bmap.nextSetBit (0); i >= 0; i = bmap.nextSetBit (i + 1))
+            bits.add (i);
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put ("bitmap", bits);
+        return entry;
+    }
+
     public void unpack (BaseComponent m, InputStream in) 
         throws IOException, BaseException 
     {
@@ -344,7 +352,7 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                 getBitMapfieldPackager().unpack(bitmap, in);
                 bmap = (BitSet) bitmap.getValue();
                 if (logger != null)
-                    evt.addMessage ("<bitmap>"+bmap.toString()+"</bitmap>");
+                    evt.addMessage (bitmapEntry (bmap));
                 m.set (bitmap);
                 maxField = Math.min(maxField, bmap.size());
             }
@@ -359,18 +367,8 @@ public abstract class aBasePackager implements iPackager, iLogSource {
 
                     BaseComponent c = fld[i].createComponent(i);
                     fld[i].unpack (c, in);
-                    if (logger != null) {
-                        evt.addMessage ("<unpack fld=\"" + i 
-                            +"\" packager=\""
-                            +fld[i].getClass().getName()+ "\">");
-                        if (c.getValue() instanceof ISOMsg)
-                            evt.addMessage (c.getValue());
-                        else if (logFieldValues)
-                            evt.addMessage ("  <value>" 
-                                +c.getValue().toString()
-                                + "</value>");
-                        evt.addMessage ("</unpack>");
-                    }
+                    if (logger != null)
+                        logUnpackedField (evt, i, fld[i], c, -1);
                     m.set(c);
                 }
             }
@@ -382,16 +380,8 @@ public abstract class aBasePackager implements iPackager, iLogSource {
                     if (bmap == null || bmap.get(i)) {
                         BaseComponent c = fld[i+128].createComponent(i);
                         fld[i+128].unpack (c, in);
-                        if (logger != null) {
-                            evt.addMessage ("<unpack fld=\"" + i+128
-                                +"\" packager=\""
-                                +fld[i+128].getClass().getName()+ "\">");
-                            if (logFieldValues)
-                                evt.addMessage ("  <value>" 
-                                    +c.getValue().toString()
-                                    + "</value>");
-                            evt.addMessage ("</unpack>");
-                        }
+                        if (logger != null)
+                            logUnpackedField (evt, i + 128, fld[i+128], c, -1);
                         m.set(c);
                     }
                 }

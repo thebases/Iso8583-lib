@@ -12,6 +12,7 @@ import com.base.iso.interfaces.connector.iConnector;
 import com.base.iso.interfaces.log.iLoggeable;
 import com.base.iso.packager.aBasePackager;
 import com.base.iso.util.ISOUtil;
+import com.base.iso.util.json.Json;
 
 /**
  * implements <b>Composite</b>
@@ -478,54 +479,38 @@ public class ISOMsg extends BaseComponent
         }
     }
     /**
-     * dump the message to a PrintStream. The output is sorta
-     * XML, intended to be easily parsed.
-     * <br>
-     * Each component is responsible for its own dump function,
-     * ISOMsg just calls dump on every valid field.
+     * Dumps the message to a PrintStream as one valid, indented JSON object:
+     * {@code {"isomsg": {"direction", "packager", "bitmap", "header", "fields"}}}.
+     * Field values use the same shape as {@link ISOMsgConverter#toJson}; mask the
+     * message first (see {@code ProtectLogListener}) before writing it anywhere.
      * @param p - print stream
      * @param indent - optional indent string
      */
     @Override
     public void dump (PrintStream p, String indent) {
-        BaseComponent c;
-        p.print (indent + "{\"" + BaseConstant.ISOMSG_TAG + "\": {");
-        switch (direction) {
-            case INCOMING:
-                p.print (" direction=\"incoming\"");
-                break;
-            case OUTGOING:
-                p.print (" direction=\"outgoing\"");
-                break;
-        }
+        Map<String, Object> node = new LinkedHashMap<>();
+        if (direction == INCOMING)
+            node.put("direction", "incoming");
+        else if (direction == OUTGOING)
+            node.put("direction", "outgoing");
         if (fieldNumber != -1)
-            p.print (" "+BaseConstant.ID_ATTR +"=\""+fieldNumber +"\"");
-        p.println (",");
-        String newIndent = indent + "  ";
-        if (getPackager() != null) {
-           p.println (
-              newIndent
-           + "\"package\":\"" + getPackager().getDescription() + "\","
-           );
+            node.put(BaseConstant.ID_ATTR, fieldNumber);
+        if (getPackager() != null)
+            node.put("packager", getPackager().getDescription());
+        List<Integer> bitmap = new ArrayList<>();
+        for (Integer k : fields.keySet())
+            if (k > 0)
+                bitmap.add(k);
+        node.put("bitmap", bitmap);
+        try {
+            node.putAll(ISOMsgConverter.toJsonTree(this, true)); // "header" (hex) and "fields"
+        } catch (BaseException e) {
+            node.put("error", e.getMessage());
         }
-        if (header instanceof iLoggeable)
-            ((iLoggeable) header).dump (p, newIndent);
-
-        for (int i=0; i<=maxField; i++) {
-            if ((c = (BaseComponent) fields.get (i)) != null)
-                c.dump (p, newIndent);
-            //
-            // Uncomment to include bitmaps within logs
-            // 
-            if (i == 0) {
-             if ((c = (BaseComponent) fields.get (new Integer (-1))) != null)
-               c.dump (p, newIndent);
-            }
-            
-        }
-
-        // p.println (indent + "</" + BaseConstant.ISOMSG_TAG+">");
-        p.println (indent + "}");
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put(BaseConstant.ISOMSG_TAG, node);
+        for (String line : Json.writePretty(root).split("\n"))
+            p.println(indent + line);
     }
     /**
      * get the component associated with the given field number

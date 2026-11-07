@@ -761,27 +761,25 @@ public abstract class BaseConnector extends Observable
         } catch (BaseException e) {
             evt.addMessage(e);
             if (header != null) {
-                evt.addMessage("--- header ---");
-                evt.addMessage(ISOUtil.hexdump(header));
+                evt.addMessage("header", ISOUtil.hexString(header));
             }
             if (b != null) {
                 // T12: the raw frame holds PAN / track 2 / PIN block — log its size only.
-                evt.addMessage("--- data ---");
-                evt.addMessage("[" + b.length + " bytes]");
+                evt.addMessage("data", "[" + b.length + " bytes]");
             }
             throw e;
         } catch (EOFException e) {
             closeSocket();
-            evt.addMessage("<peer-disconnect/>");
+            evt.addMessage("peer-disconnect", "EOF");
             throw e;
         } catch (SocketException e) {
             closeSocket();
             if (usable)
-                evt.addMessage("<peer-disconnect>" + e.getMessage() + "</peer-disconnect>");
+                evt.addMessage("peer-disconnect", e.getMessage());
             throw e;
         } catch (InterruptedIOException e) {
             closeSocket();
-            evt.addMessage("<io-timeout/>");
+            evt.addMessage("io-timeout", e.getMessage());
             throw e;
         } catch (IOException e) {
             closeSocket();

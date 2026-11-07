@@ -1,18 +1,32 @@
 package com.base.iso.util.log;
 
-/*
- * This LogEvent have been re-write to use for Android 10+
- * 
- */
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.sql.SQLException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 import com.base.iso.interfaces.log.iLogSource;
 import com.base.iso.interfaces.log.iLoggeable;
+import com.base.iso.util.json.Json;
 import com.base.iso.util.xml.XmlElement;
 
+/**
+ * One log entry: a realm, a tag and a payload list.
+ *
+ * <p>{@link #dump} writes the event as one valid JSON object:
+ * <pre>
+ * {
+ *   "log-realm": "host-a/10.0.0.1:8000",
+ *   "at": "2026-11-07T15:20:52.534+0700",
+ *   "lifespan-ms": 6,
+ *   "send": { "isomsg": { ... } }
+ * }
+ * </pre>
+ * The payload is written under the tag: a single item as-is, several items as an array.
+ * Raw {@code byte[]} items are written as {@code "[n bytes]"}, never as data.
+ */
 public class LogEvent {
     private iLogSource source;
     private String tag;
@@ -54,9 +68,11 @@ public class LogEvent {
         payLoad.add(msg);
     }
 
+    /** Adds {@code {"tagname": message}} to the payload. */
     public void addMessage(String tagname, String message) {
-        // payLoad.add("<" + tagname + ">" + message + "</" + tagname + ">");
-         payLoad.add("{\"" + tagname + "\":" + message + "}\n");
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put(tagname, message);
+        payLoad.add(entry);
     }
 
     public iLogSource getSource() {
@@ -67,146 +83,95 @@ public class LogEvent {
         this.source = source;
     }
 
-    protected String dumpHeader(PrintStream p, String indent) {
+    /** Writes this event as an indented JSON object; every line is prefixed with {@code indent}. */
+    public void dump(PrintStream p, String indent) {
         if (dumpedAt == 0L)
             dumpedAt = System.currentTimeMillis();
-        Date date = new Date(dumpedAt);
-        StringBuilder sb = new StringBuilder(indent);
-        sb.append("{\"log-realm\":\"");
-        // sb.append("<log realm=\"");
-        sb.append(getRealm());
-        sb.append("\", \n \"at\":\"");
-        sb.append(date.toString());
-        sb.append('.');
-        sb.append(Long.toString(dumpedAt % 1000));
-        sb.append('"');
-        if (dumpedAt != createdAt) {
-            sb.append(", \n \"lifespan\":\"");
-            sb.append(Long.toString(dumpedAt - createdAt));
-            sb.append("ms\"");
+
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("log-realm", getRealm());
+        // SimpleDateFormat is not thread-safe: one instance per call.
+        event.put("at", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.ROOT).format(new Date(dumpedAt)));
+        if (dumpedAt != createdAt)
+            event.put("lifespan-ms", dumpedAt - createdAt);
+
+        List<Object> items = new ArrayList<>();
+        synchronized (payLoad) {
+            for (Object o : payLoad)
+                items.add(toJsonValue(o));
         }
-        sb.append(",");
+        Object body = items.isEmpty() ? null : items.size() == 1 ? items.get(0) : items;
+        event.put(tag != null ? tag : "info", body);
 
-        // sb.append('>');
-        p.println(sb.toString());
-        return indent + "  ";
+        for (String line : Json.writePretty(event).split("\n"))
+            p.println(indent + line);
     }
 
-    protected void dumpTrailer(PrintStream p, String indent) {
-        p.println(indent + "}");
-    }
-
-    public void dump(PrintStream p, String outer) {
-        String indent = dumpHeader(p, outer);
-        String newIndent = (tag != null) ? indent + "  " : "";
-
-        if (payLoad.isEmpty()) {
-            if (tag != null)
-                p.println(indent + "\"" + tag + "\": ");
-        } else {
-            if (tag != null)
-                p.println(indent + "\"" + tag + "\": ");
-            synchronized (payLoad) {
-                for (Object o : payLoad) {
-                    if (o instanceof iLoggeable) {
-                        ((iLoggeable) o).dump(p, newIndent);
-                    } else if (o instanceof SQLException) {
-                        SQLException e = (SQLException) o;
-                        p.println(newIndent + "{\"SQLException\": " + e.getMessage() + "}");
-                        p.println(newIndent + "{\"SQLState\"" + e.getSQLState() + "}");
-                        p.println(newIndent + "{\"VendorError\"" + e.getErrorCode() + "}");
-                        e.printStackTrace(p);
-                    } else if (o instanceof Throwable) {
-                        Throwable t = (Throwable) o;
-                        p.println(newIndent + "{\"exception\": \"name\":\"" + t.getClass().getName() + "\"}");
-                        p.println(newIndent + escapeXml(t.getMessage()));
-                        t.printStackTrace(p);
-                        p.println(newIndent + "}");
-                    } else if (o instanceof Object[]) {
-                        p.print(newIndent + "[");
-                        Object[] array = (Object[]) o;
-                        for (int i = 0; i < array.length; i++) {
-                            if (i > 0) p.print(", ");
-                            p.print(array[i]);
-                        }
-                        p.println("]");
-                    } else if (o instanceof XmlElement) {
-                        // built-in XML (replaces the javax.xml / org.w3c.dom pretty-printer)
-                        for (String line : o.toString().split("\n"))
-                            p.println(newIndent + line);
-                    } else if (o != null) {
-                        p.println(newIndent + escapeXml(o.toString()));
-                    } else {
-                        p.println(newIndent + "null");
-                    }
-                }
-            }
-            if (tag != null)
-                p.println(indent + "");
+    /** Converts a payload item into a value {@link Json#write} accepts. */
+    private static Object toJsonValue(Object o) {
+        if (o == null || o instanceof String || o instanceof Boolean
+                || o instanceof Integer || o instanceof Long || o instanceof Short || o instanceof Byte
+                || o instanceof Double || o instanceof Float || o instanceof BigDecimal || o instanceof BigInteger)
+            return o;
+        if (o instanceof byte[])
+            return "[" + ((byte[]) o).length + " bytes]"; // never log raw bytes: may be card data
+        if (o instanceof Throwable)
+            return throwable((Throwable) o);
+        if (o instanceof iLoggeable)
+            return loggeable((iLoggeable) o);
+        if (o instanceof Map) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) o).entrySet())
+                m.put(String.valueOf(e.getKey()), toJsonValue(e.getValue()));
+            return m;
         }
-        dumpTrailer(p, outer);
+        if (o instanceof Collection || o instanceof Object[]) {
+            Iterable<?> it = o instanceof Collection ? (Collection<?>) o : Arrays.asList((Object[]) o);
+            List<Object> l = new ArrayList<>();
+            for (Object x : it)
+                l.add(toJsonValue(x));
+            return l;
+        }
+        if (o instanceof XmlElement)
+            return o.toString();
+        return o.toString();
     }
 
-    // public void dump(PrintStream p, String outer) {
-    //     String indent = dumpHeader(p, outer);
-    //     String newIndent = (tag != null) ? indent + "  " : "";
+    private static Map<String, Object> throwable(Throwable t) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("exception", t.getClass().getName());
+        m.put("message", t.getMessage());
+        List<String> stack = new ArrayList<>();
+        for (String line : capture(t::printStackTrace).split("\\r?\n")) {
+            String s = line.trim();
+            if (!s.isEmpty())
+                stack.add(s);
+        }
+        m.put("stack", stack);
+        return m;
+    }
 
-    //     if (payLoad.isEmpty()) {
-    //         if (tag != null)
-    //             p.println(indent + "<" + tag + "/>");
-    //     } else {
-    //         if (tag != null)
-    //             p.println(indent + "<" + tag + ">");
-    //         synchronized (payLoad) {
-    //             for (Object o : payLoad) {
-    //                 if (o instanceof iLoggeable) {
-    //                     ((iLoggeable) o).dump(p, newIndent);
-    //                 } else if (o instanceof SQLException) {
-    //                     SQLException e = (SQLException) o;
-    //                     p.println(newIndent + "<SQLException>" + e.getMessage() + "</SQLException>");
-    //                     p.println(newIndent + "<SQLState>" + e.getSQLState() + "</SQLState>");
-    //                     p.println(newIndent + "<VendorError>" + e.getErrorCode() + "</VendorError>");
-    //                     e.printStackTrace(p);
-    //                 } else if (o instanceof Throwable) {
-    //                     Throwable t = (Throwable) o;
-    //                     p.println(newIndent + "<exception name=\"" + t.getClass().getName() + "\">");
-    //                     p.println(newIndent + escapeXml(t.getMessage()));
-    //                     t.printStackTrace(p);
-    //                     p.println(newIndent + "</exception>");
-    //                 } else if (o instanceof Object[]) {
-    //                     p.print(newIndent + "[");
-    //                     Object[] array = (Object[]) o;
-    //                     for (int i = 0; i < array.length; i++) {
-    //                         if (i > 0) p.print(", ");
-    //                         p.print(array[i]);
-    //                     }
-    //                     p.println("]");
-    //                 } else if (o instanceof Element) {
-    //                     try {
-    //                         TransformerFactory tf = TransformerFactory.newInstance();
-    //                         Transformer transformer = tf.newTransformer();
-    //                         transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-    //                         transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+    /** Embeds the component's own dump: as JSON when it is valid JSON, else as text. */
+    private static Object loggeable(iLoggeable l) {
+        String text = capture(ps -> l.dump(ps, "")).trim();
+        try {
+            return Json.parse(text);
+        } catch (IllegalArgumentException notJson) {
+            return text;
+        }
+    }
 
-    //                         DOMSource source = new DOMSource((Element) o);
-    //                         StreamResult result = new StreamResult(p);
-    //                         transformer.transform(source, result);
-    //                     } catch (Exception e) {
-    //                         p.println(newIndent + "<error>Failed to transform XML Element</error>");
-    //                         e.printStackTrace(p);
-    //                     }
-    //                 } else if (o != null) {
-    //                     p.println(newIndent + escapeXml(o.toString()));
-    //                 } else {
-    //                     p.println(newIndent + "null");
-    //                 }
-    //             }
-    //         }
-    //         if (tag != null)
-    //             p.println(indent + "</" + tag + ">");
-    //     }
-    //     dumpTrailer(p, outer);
-    // }
+    private interface Writer {
+        void write(PrintStream ps);
+    }
+
+    private static String capture(Writer w) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PrintStream ps = new PrintStream(baos);
+        w.write(ps);
+        ps.flush();
+        return baos.toString();
+    }
 
     public String getRealm() {
         return source != null ? source.getRealm() : "";
@@ -217,19 +182,6 @@ public class LogEvent {
     }
 
     public String toString() {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PrintStream p = new PrintStream(baos);
-        dump(p, "");
-        return baos.toString();
-    }
-
-    private String escapeXml(String input) {
-        if (input == null) return "";
-        return input
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;");
+        return capture(ps -> dump(ps, ""));
     }
 }

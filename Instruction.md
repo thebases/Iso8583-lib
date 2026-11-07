@@ -55,7 +55,7 @@ Optional internal Maven publishing: `./gradlew :app:publishToMavenLocal` (coordi
 `./gradlew :app:check` enforces each of these and fails the build on a violation:
 
 - **No third-party runtime dependencies** (`verifySelfContained`). The jar runs with JDK or Android framework classes only. If a dependency ever becomes unavoidable, it must be shaded and relocated under `com.base.iso.shaded.*`. See plan T21 in `.agents/planning/`.
-- **Only Android-available JDK modules** (`jdepsCheck`): `java.base` and `java.sql`. JSON and XML are handled by the library's own code (`com.base.iso.util.json`, `com.base.iso.util.xml`), not by `javax.xml` or a third-party library.
+- **Only Android-available JDK modules** (`jdepsCheck`): `java.base` only. JSON and XML are handled by the library's own code (`com.base.iso.util.json`, `com.base.iso.util.xml`), not by `javax.xml` or a third-party library.
 - **Only Android API 24 APIs** (`animalsnifferMain`). This rejects `java.nio.file`, `java.time`, `java.net.http`, and Java 9+ method overloads such as `ByteBuffer.position(int)`.
 - **Bytecode for Java 11** (class file major 55), for JVM 11+ and Android D8.
 - **R8 keep rules inside the jar** at `META-INF/proguard/iso8583.pro`.
@@ -395,6 +395,15 @@ packager.setLogger(logger, "host-a");
   - Raw `byte[]` items are replaced by `[n bytes]`.
 - By default packagers log only field numbers, codecs and lengths, never values or raw hex. `packager.setLogFieldValues(true)` turns values on for local debugging **with test cards only**.
 - Connector receive errors log the frame size, not a hexdump.
+- **Each event is one valid JSON object** (`SimpleLogListener` writes them back to back), so a log shipper can parse them:
+
+  ```json
+  { "log-realm": "host-a/10.0.0.1:8000", "at": "2026-11-07T15:26:28.044+0700", "lifespan-ms": 2,
+    "send": { "isomsg": { "direction": "outgoing", "bitmap": [2, 3, 4, 11, 52],
+              "fields": { "0": "0200", "2": "411111______1111", "52": "[WIPED]" } } } }
+  ```
+
+  The payload sits under the event tag (`connect`, `send`, `receive`, `unpack`, ...): one item as-is, several as an array. Message fields use the same shape as `ISOMsgConverter.toJson`. Exceptions become `{"exception", "message", "stack"}`, and raw `byte[]` items become `"[n bytes]"`. `ISOMsg.dump` and `LogEvent.toString()` give the same JSON.
 
 ## 8. Threading (JVM services)
 
@@ -455,7 +464,7 @@ Build `request` with `setPackager(packager)` **before** setting fields (see [Bui
 
 ## 10. Sample client (`appiso`)
 
-`appiso/src/main/java/com/base/app/App.java` sends an 0800 echo test over `NCCConnector` using `ISO87BPackager`, with `ProtectLogListener` chained before `SimpleLogListener`. It reads no files.
+`appiso/src/main/java/com/base/app/App.java` sends an 0800 echo test over `NCCConnector` using `ISO87BPackager`, with `ProtectLogListener` chained before `SimpleLogListener`. It reads no files. It depends on the built `app/build/libs/iso8583-2.0.0.jar` file, not on the `:app` project, so it compiles and runs exactly as an integrator would; Gradle builds the jar first.
 
 ```sh
 ./gradlew :appiso:run --args="<host> <port>"   # defaults: localhost 8000 — use a test host only

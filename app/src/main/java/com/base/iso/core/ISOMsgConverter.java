@@ -78,7 +78,7 @@ public final class ISOMsgConverter {
         return m;
     }
 
-    private static Map<String, Object> toJsonTree(ISOMsg m, boolean top) throws BaseException {
+    static Map<String, Object> toJsonTree(ISOMsg m, boolean top) throws BaseException {
         Map<String, Object> node = new LinkedHashMap<>();
         if (top && m.getHeader() != null)
             node.put("header", ISOUtil.hexString(m.getHeader()));
