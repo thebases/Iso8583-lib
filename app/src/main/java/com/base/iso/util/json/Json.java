@@ -114,6 +114,21 @@ public final class Json {
                 sb.append("[]");
                 return;
             }
+            // Pretty mode: an array of numbers/booleans only (e.g. the log's "bitmap") stays on one
+            // line, "[2, 3, 4]", so long field lists don't take one line per element. Arrays holding
+            // strings (e.g. hexdump "dump" lines) or containers get one element per line.
+            if (step != null && allInlineScalars(items)) {
+                sb.append('[');
+                boolean first = true;
+                for (Object o : items) {
+                    if (!first)
+                        sb.append(", ");
+                    first = false;
+                    write(sb, o, step, indent, depth + 1);
+                }
+                sb.append(']');
+                return;
+            }
             String inner = step == null ? "" : indent + step;
             sb.append('[');
             boolean first = true;
@@ -129,6 +144,14 @@ public final class Json {
         } else {
             throw new IllegalArgumentException("Cannot write " + v.getClass().getName() + " as JSON");
         }
+    }
+
+    /** True when every element is a number, boolean or null, i.e. the array is printed on one line. */
+    private static boolean allInlineScalars(Iterable<?> items) {
+        for (Object o : items)
+            if (o != null && !(o instanceof Number) && !(o instanceof Boolean))
+                return false;
+        return true;
     }
 
     private static void newline(StringBuilder sb, String step, String indent) {

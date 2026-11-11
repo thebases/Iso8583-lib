@@ -112,8 +112,17 @@ class JsonTest {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("a", 1L);
         m.put("b", Arrays.asList(2L, 3L));
-        assertEquals("{\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}", Json.writePretty(m));
+        // scalar-only arrays stay inline in pretty mode
+        assertEquals("{\n  \"a\": 1,\n  \"b\": [2, 3]\n}", Json.writePretty(m));
         assertEquals(m, Json.parse(Json.writePretty(m)));
+    }
+
+    @Test
+    void writesPrettyStringArrayOnePerLine() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("dump", Arrays.asList("0000  02 00", "0010  30 30"));
+        assertEquals("{\n  \"dump\": [\n    \"0000  02 00\",\n    \"0010  30 30\"\n  ]\n}",
+                Json.writePretty(m));
     }
 
     @Test

@@ -64,13 +64,55 @@ class ConnectorFramingTest {
     }
 
     @Test
-    void hexSendsAsciiHexLengthMessage() throws Exception {
+    void asciiSendsAsciiHexLengthMessage() throws Exception {
         try (Loopback lb = new Loopback()) {
-            HEXConnector c = new HEXConnector(lb.host(), lb.port(), p, null);
+            ASCIIConnector c = new ASCIIConnector(lb.host(), lb.port(), p, null);
             // 31 = 0x1f → "001f" in ASCII
             assertEquals("30303166" + P0800, sendFrame(c, lb, 4));
             c.disconnect();
         }
+    }
+
+    /** New HEXConnector = BCDConnector framing with a 2-byte binary length (like NAC). */
+    @Test
+    void hexSendsBinaryLengthTpduMessage() throws Exception {
+        try (Loopback lb = new Loopback()) {
+            HEXConnector c = new HEXConnector(lb.host(), lb.port(), p, ISOUtil.hex2byte(TPDU));
+            assertEquals("0024" + TPDU + P0800, sendFrame(c, lb, 2)); // 0x24 = 36 = 5 + 31
+            c.disconnect();
+        }
+    }
+
+    @Test
+    void hexSwapsFiveByteMessageHeaderLikeBcd() throws Exception {
+        try (Loopback lb = new Loopback()) {
+            HEXConnector c = new HEXConnector(lb.host(), lb.port(), p, null);
+            c.connect();
+            ISOMsg m = TestMessages.m0800(p);
+            m.setHeader(ISOUtil.hex2byte("6000010002"));
+            c.send(m);
+            // dest 0001 <-> src 0002 swapped on the wire; length still binary
+            assertEquals("0024" + "6000020001" + P0800, ISOUtil.hexString(lb.read(2 + 5 + bytes(P0800))));
+            assertEquals("6000010002", ISOUtil.hexString(m.getHeader())); // caller's msg untouched
+            c.disconnect();
+        }
+    }
+
+    @Test
+    void hexRawSenderUsesBinaryLength() throws Exception {
+        try (Loopback lb = new Loopback()) {
+            HEXConnector c = new HEXConnector(lb.host(), lb.port(), p, null);
+            c.connect();
+            c.sendHex(ISOUtil.hex2byte(P0800), ISOUtil.hex2byte(TPDU));
+            String expected = "0024" + TPDU + P0800;
+            assertEquals(expected, ISOUtil.hexString(lb.read(expected.length() / 2)));
+            c.disconnect();
+        }
+    }
+
+    @Test
+    void hexReceivesScriptedFrame() throws Exception {
+        assertReceives(new HEXConnector(null, 0, p, ISOUtil.hex2byte(TPDU)), "0026" + TPDU + P0810);
     }
 
     @Test
@@ -89,9 +131,9 @@ class ConnectorFramingTest {
     }
 
     @Test
-    void hexReceivesScriptedFrame() throws Exception {
+    void asciiReceivesScriptedFrame() throws Exception {
         // 33 = 0x21
-        assertReceives(new HEXConnector(null, 0, p, null), "30303231" + P0810);
+        assertReceives(new ASCIIConnector(null, 0, p, null), "30303231" + P0810);
     }
 
     private void assertReceives(BaseConnector c, String frameHex) throws Exception {

@@ -111,6 +111,15 @@ public class NACConnector extends BaseConnector {
     }
     
     public void sendAscii(byte[] b, byte[] TPDU) throws IOException, BaseException {
+        sendAscii(b, TPDU, false);
+    }
+
+    /**
+     * Same as {@link #sendAscii(byte[], byte[])}; when {@code hexdump} is true the full frame
+     * ([length][TPDU][b]) is added to the "send" log event as a hexdump.
+     * <b>Debug only:</b> the frame is NOT masked.
+     */
+    public void sendAscii(byte[] b, byte[] TPDU, boolean hexdump) throws IOException, BaseException {
         LogEvent evt = new LogEvent(this, "send");
         try {
             if (!isConnected())
@@ -138,6 +147,8 @@ public class NACConnector extends BaseConnector {
             if (body.length > 0) System.arraycopy(body, 0, out, lenAscii.length + tpdu.length, body.length);
 
             // 5) Send
+            if (hexdump)
+                addHexdump(evt, out);
             synchronized (serverOutLock) {
                 serverOut.write(out);
                 serverOut.flush();

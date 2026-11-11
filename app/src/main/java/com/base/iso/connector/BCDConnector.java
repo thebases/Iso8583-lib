@@ -114,7 +114,16 @@ public class BCDConnector extends BaseConnector {
         super.setHeader (ISOUtil.str2bcd(header, false));
     }
 
-    public void sendBcd(byte[] b, byte[] TPDU)
+    public void sendBcd(byte[] b, byte[] TPDU) throws IOException, BaseException {
+        sendBcd(b, TPDU, false);
+    }
+
+    /**
+     * Same as {@link #sendBcd(byte[], byte[])}; when {@code hexdump} is true the full frame
+     * ([length][TPDU][b]) is added to the "send" log event as a hexdump.
+     * <b>Debug only:</b> the frame is NOT masked.
+     */
+    public void sendBcd(byte[] b, byte[] TPDU, boolean hexdump)
         throws IOException, BaseException {
     LogEvent evt = new LogEvent(this, "send");
     try {
@@ -144,6 +153,8 @@ public class BCDConnector extends BaseConnector {
         if (body.length > 0) System.arraycopy(body, 0, out, 2 + tpdu.length, body.length);
 
         // 4) Send the message
+        if (hexdump)
+            addHexdump(evt, out);
         synchronized (serverOutLock) {
             serverOut.write(out);
             serverOut.flush();

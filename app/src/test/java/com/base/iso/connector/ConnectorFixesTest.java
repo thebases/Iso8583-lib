@@ -87,8 +87,8 @@ class ConnectorFixesTest {
     }
 
     @Test
-    void hexCorruptAsciiLengthClosesSocket() throws Exception {
-        assertCorruptLengthCloses(new HEXConnector(null, 0, p, null), "5A5A5A5A"); // "ZZZZ"
+    void asciiCorruptAsciiLengthClosesSocket() throws Exception {
+        assertCorruptLengthCloses(new ASCIIConnector(null, 0, p, null), "5A5A5A5A"); // "ZZZZ"
     }
 
     private void assertCorruptLengthCloses(BaseConnector c, String prefixHex) throws Exception {

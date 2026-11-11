@@ -1,5 +1,19 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '2.2.0'
+}
+
 allprojects {
     repositories {
         mavenCentral()
     }
+}
+
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+}
+
+kotlin {
+    sourceSets.main.kotlin.srcDirs += 'src/main/java'
+    sourceSets.test.kotlin.srcDirs += 'src/test/java'
 }

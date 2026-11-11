@@ -136,6 +136,15 @@ public class NCCConnector extends BaseConnector {
      * @exception iBaseFilter.VetoException;
      */
     public void sendraw(byte[] b, byte[] TPDU) throws IOException, BaseException {
+        sendraw(b, TPDU, false);
+    }
+
+    /**
+     * Same as {@link #sendraw(byte[], byte[])}; when {@code hexdump} is true the full frame
+     * ([length][TPDU][b]) is added to the "send" log event as a hexdump.
+     * <b>Debug only:</b> the frame is NOT masked.
+     */
+    public void sendraw(byte[] b, byte[] TPDU, boolean hexdump) throws IOException, BaseException {
     LogEvent evt = new LogEvent(this, "send");
     try {
         if (!isConnected())
@@ -162,6 +171,8 @@ public class NCCConnector extends BaseConnector {
         if (body.length > 0) System.arraycopy(body, 0, out, 2 + tpdu.length, body.length);
 
         // 5) Send modified message
+        if (hexdump)
+            addHexdump(evt, out);
         synchronized (serverOutLock) {
             serverOut.write(out);
             serverOut.flush();

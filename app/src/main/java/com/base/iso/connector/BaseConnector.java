@@ -580,6 +580,22 @@ public abstract class BaseConnector extends Observable
      */
     public void send(ISOMsg m)
             throws IOException, BaseException {
+        send(m, false);
+    }
+
+    /**
+     * sends an ISOMsg over the TCP/IP session
+     *
+     * @param m       the Message to be sent
+     * @param hexdump when true, the exact frame written to the socket (length prefix + header +
+     *                packed message + trailer) is added to the "send" log event as a hexdump.
+     *                <b>Debug only:</b> the raw frame is NOT masked (PAN, track 2, PIN block, EMV).
+     * @exception IOException
+     * @exception BaseException
+     * @exception iBaseFilter.VetoException;
+     */
+    public void send(ISOMsg m, boolean hexdump)
+            throws IOException, BaseException {
         LogEvent evt = new LogEvent(this, "send");
         try {
             if (!isConnected())
@@ -594,11 +610,27 @@ public abstract class BaseConnector extends Observable
             byte[] b = m.pack();
         
             synchronized (serverOutLock) {
-                sendMessageLength(b.length + getHeaderLength(m));
-                sendMessageHeader(m, b.length);
-                sendMessage(b, 0, b.length);
-                sendMessageTrailer(m, b);
-                serverOut.flush();
+                if (hexdump) {
+                    // Capture the frame exactly as the (possibly overridden) framing hooks write
+                    // it, then put it on the wire in one write.
+                    ByteArrayOutputStream frame = new ByteArrayOutputStream(b.length + 16);
+                    DataOutputStream realOut = serverOut;
+                    DataOutputStream tapOut = new DataOutputStream(frame);
+                    serverOut = tapOut;
+                    try {
+                        writeFrame(m, b);
+                    } finally {
+                        if (serverOut == tapOut) // a concurrent disconnect may have nulled it
+                            serverOut = realOut;
+                    }
+                    byte[] raw = frame.toByteArray();
+                    addHexdump(evt, raw);
+                    realOut.write(raw);
+                    realOut.flush();
+                } else {
+                    writeFrame(m, b);
+                    serverOut.flush();
+                }
             }
             cnt[TX]++;
             setChanged();
@@ -632,10 +664,26 @@ public abstract class BaseConnector extends Observable
      */
     public void send(byte[] b)
             throws IOException, BaseException {
+        send(b, false);
+    }
+
+    /**
+     * sends a byte[] over the TCP/IP session (written as-is, no framing)
+     *
+     * @param b       the byte array to be sent
+     * @param hexdump when true, {@code b} is added to the "send" log event as a hexdump.
+     *                <b>Debug only:</b> the bytes are NOT masked.
+     * @exception IOException
+     * @exception BaseException
+     */
+    public void send(byte[] b, boolean hexdump)
+            throws IOException, BaseException {
         LogEvent evt = new LogEvent(this, "send");
         try {
             if (!isConnected())
                 throw new BaseException("unconnected connector");
+            if (hexdump)
+                addHexdump(evt, b);
             synchronized (serverOutLock) {
                 serverOut.write(b);
                 serverOut.flush();
@@ -661,6 +709,78 @@ public abstract class BaseConnector extends Observable
             serverOut.flush();
         }
 
+    }
+
+    /** Writes [length][header][message][trailer] through the framing hooks. Caller holds serverOutLock. */
+    private void writeFrame(ISOMsg m, byte[] b) throws IOException {
+        sendMessageLength(b.length + getHeaderLength(m));
+        sendMessageHeader(m, b.length);
+        sendMessage(b, 0, b.length);
+        sendMessageTrailer(m, b);
+    }
+
+    /**
+     * Adds {@code {"hexdump": {"length": n, "hex": "...", "dump": ["0000  02 00 ...", ...]}}}
+     * to {@code evt}. The bytes are logged unmasked: call it only when the caller asked for a
+     * hexdump (debug builds).
+     *
+     * @param evt   log event to extend
+     * @param frame raw bytes (null-safe)
+     */
+    protected static void addHexdump(LogEvent evt, byte[] frame) {
+        byte[] raw = frame == null ? new byte[0] : frame;
+        java.util.Map<String, Object> dump = new java.util.LinkedHashMap<>();
+        dump.put("length", raw.length);
+        dump.put("hex", ISOUtil.hexString(raw));
+        List<String> lines = new ArrayList<>();
+        if (raw.length > 0)
+            for (String line : ISOUtil.hexdump(raw).split("\\R"))
+                if (!line.isEmpty())
+                    lines.add(line);
+        dump.put("dump", lines);
+        java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
+        entry.put("hexdump", dump);
+        evt.addMessage(entry);
+    }
+
+    /** Copies every byte read from the wrapped stream into {@code tap}. */
+    private static final class TapInputStream extends FilterInputStream {
+        private final ByteArrayOutputStream tap;
+
+        TapInputStream(InputStream in, ByteArrayOutputStream tap) {
+            super(in);
+            this.tap = tap;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int c = super.read();
+            if (c >= 0)
+                tap.write(c);
+            return c;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            if (n > 0)
+                tap.write(b, off, n);
+            return n;
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            // route through read() so skipped bytes are captured too
+            long skipped = 0;
+            byte[] buf = new byte[(int) Math.min(Math.max(n, 0), 512)];
+            while (skipped < n) {
+                int r = read(buf, 0, (int) Math.min(buf.length, n - skipped));
+                if (r < 0)
+                    break;
+                skipped += r;
+            }
+            return skipped;
+        }
     }
 
     protected boolean isRejected(byte[] b) {
@@ -707,9 +827,24 @@ public abstract class BaseConnector extends Observable
      * @throws BaseException
      */
     public ISOMsg receive() throws IOException, BaseException {
+        return receive(false);
+    }
+
+    /**
+     * Waits and receive an ISOMsg over the TCP/IP session
+     *
+     * @param hexdump when true, the exact frame read from the socket (length prefix + header +
+     *                message + trailer) is added to the "receive" log event as a hexdump — also
+     *                when unpacking fails. <b>Debug only:</b> the raw frame is NOT masked.
+     * @return the Message received
+     * @throws IOException
+     * @throws BaseException
+     */
+    public ISOMsg receive(boolean hexdump) throws IOException, BaseException {
         byte[] b = null;
         byte[] header = null;
         LogEvent evt = new LogEvent(this, "receive");
+        ByteArrayOutputStream rawIn = hexdump ? new ByteArrayOutputStream() : null;
         ISOMsg m = createMsg(); // call createMsg instead of createISOMsg for
                                 // backward compatibility
         m.setSource(this);
@@ -718,11 +853,20 @@ public abstract class BaseConnector extends Observable
                 throw new BaseException("unconnected connector");
 
             synchronized (serverInLock) {
+              DataInputStream realIn = serverIn;
+              DataInputStream tapIn = null;
+              if (rawIn != null) {
+                  tapIn = new DataInputStream(new TapInputStream(realIn, rawIn));
+                  serverIn = tapIn;
+              }
+              try {
                 int len = getMessageLength();
                 if (expectKeepAlive) {
                     while (len == 0) {
                         // If zero length, this is a keep alive msg
                         Logger.log(new LogEvent(this, "receive", "Zero length keep alive message received"));
+                        if (rawIn != null)
+                            rawIn.reset(); // dump only the real frame
                         len = getMessageLength();
                     }
                 }
@@ -746,6 +890,10 @@ public abstract class BaseConnector extends Observable
                 } else
                     throw new BaseException(
                             "receive length " + len + " seems strange - maxPacketLength = " + getMaxPacketLength());
+              } finally {
+                  if (tapIn != null && serverIn == tapIn) // a concurrent disconnect may have nulled it
+                      serverIn = realIn;
+              }
             }
             m.setPackager(getDynamicPackager(header, b));
             m.setHeader(getDynamicHeader(header));
@@ -791,6 +939,8 @@ public abstract class BaseConnector extends Observable
             evt.addMessage(e);
             throw new BaseException("unexpected exception", e);
         } finally {
+            if (rawIn != null && rawIn.size() > 0)
+                addHexdump(evt, rawIn.toByteArray());
             Logger.log(evt);
         }
         return m;

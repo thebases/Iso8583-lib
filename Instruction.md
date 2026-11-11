@@ -4,7 +4,7 @@
 
 - building messages (`ISOMsg`);
 - packing and unpacking them with a packager (`ISO87BPackager`, `ISO93BPackager`, or a JSON/XML-defined `GenericJSONPackager`);
-- framing them over TCP with a connector (`NCCConnector`, `BCDConnector`, `NACConnector`, `HEXConnector`).
+- framing them over TCP with a connector (`NCCConnector`, `BCDConnector`, `NACConnector`, `HEXConnector`, `ASCIIConnector`).
 
 The library **never reads files**. Your app or service reads its own configuration (Android asset, config service, secret store) and passes the library a `String`, `KeyStore` or `SSLContext`. Everything else is set with plain setters; there is no configuration object or name registry.
 
@@ -320,7 +320,8 @@ A connector frames the packed message as **[length prefix][header/TPDU][packed m
 | `NCCConnector` | 2-byte BCD (max 9999) | TPDU; src/dest swapped when the message carries a 5-byte header (`setTpduSwap(false)` to turn off) |
 | `BCDConnector` | 2-byte BCD | TPDU; src/dest always swapped for a 5-byte message header |
 | `NACConnector` | 2-byte binary, big-endian | TPDU; swap like NCC |
-| `HEXConnector` | 4 ASCII hex characters (max 0xFFFF) | optional |
+| `HEXConnector` | 2-byte binary, big-endian (max 65535) | TPDU; src/dest always swapped for a 5-byte message header (like BCD) |
+| `ASCIIConnector` | 4 ASCII hex characters (max 0xFFFF); was `HEXConnector` before 2026-11-12 | optional |
 
 ```java
 byte[] tpdu = ISOUtil.hex2byte("6000010000");

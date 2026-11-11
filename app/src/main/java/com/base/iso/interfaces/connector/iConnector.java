@@ -70,6 +70,30 @@ public interface iConnector extends iSource {
     public void send (byte[] b) throws IOException, BaseException;
 
     /**
+     * Receives an ISOMsg, optionally logging the raw frame as a hexdump (unmasked, debug only).
+     * The default ignores {@code hexdump}; BaseConnector implements it.
+     */
+    default ISOMsg receive (boolean hexdump) throws IOException, BaseException {
+        return receive();
+    }
+
+    /**
+     * Sends an ISOMsg, optionally logging the raw frame as a hexdump (unmasked, debug only).
+     * The default ignores {@code hexdump}; BaseConnector implements it.
+     */
+    default void send (ISOMsg m, boolean hexdump) throws IOException, BaseException {
+        send(m);
+    }
+
+    /**
+     * Sends a byte[], optionally logging it as a hexdump (unmasked, debug only).
+     * The default ignores {@code hexdump}; BaseConnector implements it.
+     */
+    default void send (byte[] b, boolean hexdump) throws IOException, BaseException {
+        send(b);
+    }
+
+    /**
      * @param b - usable state
      */
     public void setUsable(boolean b);
